@@ -1,5 +1,6 @@
 import { projectViews } from './project-views.js';
 import { connections, setupDialog, download, probePrompt } from './connections.js';
+import { workViews, chatController, chatView } from './work-views.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
   dialog = $('#dialog'),
@@ -7,6 +8,10 @@ const main = $('#main'),
 const prefix = location.pathname.startsWith('/sample') ? '/sample' : '';
 const navs = {
   desk: ['Focus desk', 'layout-dashboard'],
+  priority: ['Priority', 'list-ordered'],
+  alarms: ['Alarms', 'alarm-clock'],
+  analytics: ['Analytics', 'chart-column'],
+  chat: ['PM chat', 'messages-square'],
   queue: ['Work queue', 'layers'],
   watches: ['Follow-ups', 'bell-ring'],
   projects: ['Projects', 'layers'],
@@ -130,7 +135,7 @@ function desk() {
     (issues.length
       ? `<div class="bulletin">${icon('circle-alert')}<span>${issues.length} source connection${issues.length === 1 ? ' needs' : 's need'} attention.</span>${action('settings', 'Inspect', 'subtle')}</div>`
       : '') +
-    `<section class="hero"><div class="art" aria-hidden="true"><div class="orb"></div><div class="orbit"></div><div class="orbit o2"></div></div><div class="label"><i class="live-dot"></i>${focus ? esc(status(focus) + ' / ' + tag(focus)) : 'Workspace ready'}</div><h2>${esc(focus?.title || (watches.length ? 'Your next move is a follow-up.' : 'Bring your work into focus.'))}</h2><p>${esc(focus?.why || (watches.length ? 'Check the outstanding questions or capture your next action.' : 'Connect your repos and boards, or capture one action you want to move today.'))}</p><div class="actions">${focus ? action('brief', 'Open work brief', 'lime', 'arrow-up-right', focus.id) : action(watches.length ? 'watches' : 'settings', watches.length ? 'Open follow-ups' : 'Connect sources', 'lime', 'arrow-up-right')}</div></section>` +
+    `<section class="hero"><div class="art" aria-hidden="true"><div class="orb"></div><div class="orbit"></div><div class="orbit o2"></div></div><div class="label"><i class="live-dot"></i>${focus ? esc(status(focus) + ' / ' + tag(focus)) : 'Workspace ready'}</div><h2>${esc(focus?.title || (watches.length ? 'Your next move is a follow-up.' : 'Bring your work into focus.'))}</h2><p>${esc(focus?.why || (watches.length ? 'Check the outstanding questions or capture your next action.' : 'Connect your repos and boards, or capture one action you want to move today.'))}</p><div class="actions">${focus ? action('brief', 'Open work brief', 'lime', 'arrow-up-right', focus.id) : action(watches.length ? 'watches' : 'connections', watches.length ? 'Open follow-ups' : 'Connect sources', 'lime', 'arrow-up-right')}</div></section>` +
     `<div class="columns">${panel('Up next', others.length ? others.map((i) => tile(i, false)).join('') : empty('Your next available actions will appear here.'), action('queue', 'View queue', 'subtle'))}${panel(
       'Follow-ups',
       watches.length
@@ -230,6 +235,17 @@ function settings() {
     `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
   );
 }
+let priorityScope = '';
+const chat = chatController({ api, esc, action, date });
+setInterval(() => {
+  if (!document.hidden && page === 'chat') void chat.poll();
+}, 2500);
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'priority-scope') {
+    priorityScope = e.target.value;
+    render();
+  }
+});
 function render() {
   if (!board) return;
   $('#nav').innerHTML = Object.entries(navs)
@@ -247,10 +263,13 @@ function render() {
     watches,
     history: historyPage,
     settings,
+    chat: () => chatView({ header, panel }),
+    ...workViews({ board, header, panel, action, esc, date, empty, tile, scope: priorityScope }),
     connections: () => connections({ board, header, panel, esc, action, date }),
     ...projectViews({ board, header, panel, action, esc, empty, tile }),
   }[page]();
   document.title = navs[page][0] + ' · Kancha';
+  if (page === 'chat') chat.bind();
 }
 function navigate(p) {
   revision++;
@@ -350,6 +369,7 @@ function formModal(which) {
       field('Project', 'project', 'Personal', { required: true, max: 100 }) +
       select('Action type', 'kind', ['task', 'review', 'decision', 'incident'], 'task') +
       select('Priority', 'priority', ['normal', 'high', 'urgent'], 'normal') +
+      field('Deadline (optional)', 'due', '', { type: 'datetime-local' }) +
       field('Source URL (optional)', 'url', '', { type: 'url' });
   }
   if (which === 'watch') {
@@ -440,6 +460,33 @@ async function show(id) {
   openBrief(b.item, b.checkout);
 }
 async function handle(a, v) {
+  if (a === 'priority-edit') {
+    const i = item(v);
+    modal(
+      'Set personal priority',
+      i.title,
+      '<form class="inlineform" data-form="priority-edit"><input type="hidden" name="id" value="' +
+        esc(i.id) +
+        '">' +
+        select(
+          'Priority on your desk',
+          'priority',
+          ['source', 'normal', 'high', 'urgent'],
+          i.personalPriority || 'source',
+        ) +
+        '<p class="footnote">Source priority · ' +
+        esc(i.priority) +
+        '</p>' +
+        submit('Save priority') +
+        '</form>',
+    );
+    return;
+  }
+  if (a === 'cancel-chat') {
+    await api('chat/cancel', { id: v });
+    await chat.poll();
+    return;
+  }
   if (a === 'mcp-setup') {
     setupDialog({ config: await api('mcp-config'), modal, esc, action, notice });
     return;
@@ -612,6 +659,11 @@ document.addEventListener('submit', async (e) => {
   const sb = form.querySelector('[type=submit]');
   sb.disabled = true;
   try {
+    if (k === 'priority-edit') {
+      await op('set_personal_priority', data, 'Personal priority saved.');
+      dialog.close();
+      return;
+    }
     if (k === 'repo-form') {
       await op('follow_repo', data, 'Repository followed.');
       dialog.close();
@@ -661,6 +713,8 @@ document.addEventListener('submit', async (e) => {
     }
     if (!data.url) delete data.url;
     if (k === 'capture') {
+      if (data.due) data.due = new Date(data.due).toISOString();
+      else delete data.due;
       const i = await op('capture_work', data, 'Action captured.');
       await show(i.id);
       return;
@@ -718,7 +772,7 @@ dialog.addEventListener('click', (e) => {
   }
 });
 async function tick() {
-  if (document.hidden || dialog.open || page === 'settings' || saving) return;
+  if (document.hidden || dialog.open || page === 'settings' || page === 'chat' || saving) return;
   try {
     await refresh();
   } catch {

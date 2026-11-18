@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { jiraIssue, pull, projectTables, projectIndex } from './projects.js';
+import { priorityFactors, weeklyFlow } from './analysis.js';
 
 export const now = () => new Date().toISOString();
 export const text = (max = 240) => z.string().trim().min(1).max(max);
@@ -76,6 +77,8 @@ export function openStore({ directory, demo = false } = {}) {
     CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY,v TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS work(id TEXT PRIMARY KEY, data TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS history(seq INTEGER PRIMARY KEY, at TEXT, item TEXT, message TEXT);
+    CREATE INDEX IF NOT EXISTS history_at ON history(at);
+    CREATE TABLE IF NOT EXISTS chat(id TEXT PRIMARY KEY,engine TEXT NOT NULL,question TEXT NOT NULL,status TEXT NOT NULL,created INTEGER NOT NULL,answer TEXT);
     CREATE TABLE IF NOT EXISTS locks(k TEXT PRIMARY KEY, token TEXT, expires INTEGER);`);
   const all = () =>
     db
@@ -227,6 +230,7 @@ export function openStore({ directory, demo = false } = {}) {
           i.watch.candidate = null;
           break;
         case 'done':
+          if (i.stage === 'done') return;
           i.stage = 'done';
           i.snooze = null;
           if (i.watch) i.watch.status = 'closed';
@@ -292,16 +296,15 @@ export function openStore({ directory, demo = false } = {}) {
     const visible = all().filter((i) => i.visible),
       projectMap = projectIndex({ db }, visible);
     const clock = Date.now(),
-      items = visible.map((i) => ({ ...i, mapping: projectMap.describe(i) }));
+      items = visible.map((i) => ({
+        ...i,
+        mapping: projectMap.describe(i),
+        factors: priorityFactors(i, clock),
+      }));
     const available = items.filter(
       (i) => !['waiting', 'done'].includes(i.stage) && !(Date.parse(i.snooze) > clock),
     );
-    const score = (i) =>
-      (i.stage === 'focus' ? 10000 : 0) +
-      (i.stage === 'ready' ? 1000 : 0) +
-      { urgent: 300, high: 100, normal: 0 }[i.priority] +
-      (Date.parse(i.due) < clock + 86400000 ? 90 : 0) +
-      (i.kind === 'review' ? 20 : 0);
+    const score = (i) => i.factors.reduce((sum, [, weight]) => sum + weight, 0);
     available.sort(
       (a, b) => score(b) - score(a) || a.created.localeCompare(b.created) || a.id.localeCompare(b.id),
     );
@@ -317,6 +320,7 @@ export function openStore({ directory, demo = false } = {}) {
       hostChecks: config('hostChecks', {}),
       items,
       agenda: available.map((i) => i.id),
+      flow: weeklyFlow(db, clock),
       activity,
       sync: config('sync', {}),
       time: now(),

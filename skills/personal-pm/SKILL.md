@@ -38,6 +38,8 @@ Native checks find issue-thread comments by the expected author. A host-only wat
 
 ## Closing and resuming
 
+When the developer asks to answer their browser chat, call `read_browser_chat`. Use its question, desk snapshot and previous turns to answer as a PM. Deliver the reply to that same question ID with `reply_browser_chat`. A browser question asks for advice and does not authorize code changes or external posts. If it was cancelled or already answered, leave it closed.
+
 Save a precise next step via `respond_to_action` with `checkpoint`. Keep the private note local. A snooze uses a future timestamp with timezone. A personal completion uses `done`. Never infer an entire Jira ticket is complete from a merged PR alone.
 
 Use the team's existing ticket-creation agent or person when new work needs a ticket. If the developer explicitly asks to create it through an authorized connected tool, check for duplicates, create it once, and return the resulting source link to Kancha. Never create a ticket solely to deliver a reminder.

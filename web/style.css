@@ -976,3 +976,117 @@ code {
   font-family: monospace;
   white-space: pre;
 }
+.rail {
+  overflow-y: auto;
+}
+.desk-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.desk-metrics > div {
+  background: var(--dark);
+  color: #f7faf4;
+  border-radius: 12px;
+  padding: clamp(10px, 2vw, 22px);
+}
+.desk-metrics strong {
+  display: block;
+  font-size: clamp(24px, 3vw, 38px);
+  line-height: 1.1;
+}
+.desk-metrics small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+}
+.scope-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.scope-label select {
+  max-width: 65vw;
+}
+.rank-row,
+.alarm-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.rank-row {
+  grid-template-columns: 2ch 1fr auto;
+}
+.rank {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.rank-row small,
+.alarm-row strong,
+.alarm-row small {
+  display: block;
+}
+.rank-row p {
+  margin: 4px 0 0;
+}
+.alarm-row b {
+  color: var(--green);
+  font-size: 12px;
+}
+.flow-head,
+.flow-line {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+}
+.flow-head {
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.flow-line > div {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1fr 2ch;
+  gap: 5px;
+}
+.flow-line meter {
+  width: 100%;
+  min-width: 0;
+}
+.chat-turn {
+  margin: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.chat-turn p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#chat-error {
+  color: #953422;
+}
+#chat-engine-help,
+#chat-error {
+  margin: 0;
+}
+#chat-history {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+@media (max-width: 540px) {
+  .rank-row {
+    grid-template-columns: 2ch minmax(0, 1fr);
+  }
+  .rank-row > .actions {
+    grid-column: 2;
+  }
+}
+#chat-form {
+  margin-top: 1rem;
+}

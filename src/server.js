@@ -9,12 +9,14 @@ import { deliver } from './desktop.js';
 import { openStore } from './store.js';
 import { seedDemo } from './demo.js';
 import { mcpConfig } from './connections.js';
+import { chatHistory, submitChat } from './chat.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const assets = {
   '/': 'index.html',
   '/app.js': 'app.js',
   '/project-views.js': 'project-views.js',
   '/connections.js': 'connections.js',
+  '/work-views.js': 'work-views.js',
   '/style.css': 'style.css',
   '/mark.svg': 'mark.svg',
 };
@@ -111,7 +113,12 @@ export async function startServer(store, { port = 4317, background = true, nativ
         result = { ...b, markers: markers(b), quiet: quiet(b.settings), standaloneDemo: store.demo };
       } else if (req.method === 'GET' && url.pathname === '/api/mcp-config') {
         result = mcpConfig(activeStore.base, activeStore.demo);
-      } else if (req.method === 'POST' && url.pathname === '/api/action') {
+      } else if (req.method === 'GET' && url.pathname === '/api/chat') {
+        result = chatHistory(activeStore);
+      } else if (
+        req.method === 'POST' &&
+        ['/api/action', '/api/chat', '/api/chat/cancel'].includes(url.pathname)
+      ) {
         if (!req.headers['content-type']?.startsWith('application/json'))
           return fail(415, 'Expected JSON');
         const chunks = [];
@@ -121,8 +128,17 @@ export async function startServer(store, { port = 4317, background = true, nativ
           if (length > 150000) return fail(413, 'Request too large');
           chunks.push(chunk);
         }
-        const { name, args } = JSON.parse(Buffer.concat(chunks).toString());
-        result = await invoke(activeMap, name, args || {});
+        const payload = JSON.parse(Buffer.concat(chunks).toString());
+        if (url.pathname === '/api/chat') result = submitChat(activeStore, payload);
+        else if (url.pathname === '/api/chat/cancel')
+          result = {
+            cancelled: !!activeStore.db
+              .prepare("UPDATE chat SET status='cancelled' WHERE id=? AND status='waiting'")
+              .run(payload.id).changes,
+          };
+        else if (['read_browser_chat', 'reply_browser_chat'].includes(payload.name))
+          return fail(403, 'Use the coding session’s Kancha MCP connection for agent replies.');
+        else result = await invoke(activeMap, payload.name, payload.args || {});
       } else return fail(404, 'Route unavailable');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify(result));

@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { text, link, itemInput, settingsInput, now } from './store.js';
 import { postQuestion, sync } from './sources.js';
 import { checkGithubCli, hostProbeFields, saveCheck } from './connections.js';
+import { day } from './analysis.js';
+import { waitingChat, replyChat } from './chat.js';
 import {
   catalog,
   projectIndex,
@@ -52,6 +54,34 @@ async function checkoutContext(dir) {
 }
 export function commands(store) {
   const map = [
+    arg(
+      'set_personal_priority',
+      'Override or restore the priority on this personal desk.',
+      { id, priority: z.enum(['normal', 'high', 'urgent', 'source']) },
+      (a) =>
+        store.edit(a.id, (i) => {
+          if (!i.visible) throw Error('Item is outside the current scope');
+          i.personalPriority = a.priority === 'source' ? null : a.priority;
+          store.history(
+            i.id,
+            i.personalPriority
+              ? 'Set personal priority to ' + i.personalPriority
+              : 'Restored source priority',
+          );
+        }),
+    ),
+    arg(
+      'read_browser_chat',
+      'Read a question explicitly addressed to the open coding session, with personal PM context.',
+      {},
+      () => waitingChat(store),
+    ),
+    arg(
+      'reply_browser_chat',
+      'Deliver a text answer to the waiting question in the developer’s own browser.',
+      { id: z.string().uuid(), answer: text(20000) },
+      (a) => replyChat(store, a.id, a.answer),
+    ),
     arg(
       'project_scope',
       'Inspect this developer’s followed boards, repository hints and verified checkout origins before discovering work.',
@@ -368,9 +398,6 @@ export function markers(board, t = new Date()) {
     .filter((i) => i.stage !== 'done' && !(Date.parse(i.snooze) > t.getTime()))
     .flatMap((i) => {
       const w = i.watch;
-      if (!w) return [];
-      const due = w.status === 'waiting' && Date.parse(w.checkAt) <= t.getTime();
-      if (!due && !['ready', 'reply'].includes(w.status)) return [];
       const source = board.sync[i.source + ':' + i.project];
       if (
         ['github', 'jira'].includes(i.source) &&
@@ -379,16 +406,29 @@ export function markers(board, t = new Date()) {
           t - Date.parse(source.lastSuccess) > Math.max(30, board.settings.interval * 3) * 60000)
       )
         return [];
-      const label = due ? 'Follow-up due' : w.status === 'reply' ? 'Reply to review' : 'Ready to resume';
-      return [
-        {
+      const results = [];
+      const deadline = Date.parse(i.due);
+      if (deadline < t.getTime() + day) {
+        const late = deadline <= t.getTime();
+        results.push({
           id: i.id,
-          key: [w.key, w.status, w.lastReplyAt || '', i.snooze || ''].join('/'),
-          label,
+          key: [i.id, i.due, late ? 'late' : 'soon', i.snooze || ''].join('/'),
+          label: late ? 'Overdue' : 'Deadline approaching',
           title: i.title,
-          owner: w.owner,
-        },
-      ];
+          when: i.due,
+        });
+      }
+      const due = w?.status === 'waiting' && Date.parse(w.checkAt) <= t.getTime();
+      if (!due && !['ready', 'reply'].includes(w?.status)) return results;
+      results.push({
+        id: i.id,
+        key: [w.key, w.status, w.lastReplyAt || '', i.snooze || ''].join('/'),
+        label: due ? 'Follow-up due' : w.status === 'reply' ? 'Reply to review' : 'Ready to resume',
+        title: i.title,
+        owner: w.owner,
+        when: w.lastReplyAt || w.checkAt,
+      });
+      return results;
     });
 }
 export function quiet(settings, t = new Date()) {
