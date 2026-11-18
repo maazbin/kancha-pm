@@ -30,7 +30,12 @@ export async function gh(endpoint, payload) {
     return JSON.parse(r.stdout);
   } catch (e) {
     const message = String(e.stderr);
-    throw sourceError('GitHub', /rate limit/i.test(message) ? 429 : message.match(/HTTP (\d{3})/)?.[1]);
+    const error = sourceError(
+      'GitHub',
+      /rate limit/i.test(message) ? 429 : message.match(/HTTP (\d{3})/)?.[1],
+    );
+    error.code = e.code;
+    throw error;
   }
 }
 async function ghPages(route, call = gh) {

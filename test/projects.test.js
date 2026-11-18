@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { openStore } from '../src/store.js';
 import { commands, invoke } from '../src/engine.js';
 import { startServer } from '../src/server.js';
+import { checkGithubCli } from '../src/connections.js';
 
 const a = 'https://red.atlassian.net',
   b = 'https://blue.atlassian.net',
@@ -25,6 +26,37 @@ function setup(t) {
   const m = commands(store);
   return { store, call: (name, args) => invoke(m, name, args) };
 }
+test('connection checks keep host and CLI access independent and report partial scope', async (t) => {
+  const { store, call } = setup(t);
+  await call('record_connector_check', {
+    host: 'Codex',
+    provider: 'github',
+    status: 'connected',
+    scopes: ['one'],
+  });
+  await call('record_connector_check', {
+    host: 'Claude',
+    provider: 'slack',
+    status: 'connected',
+    scopes: ['Team workspace'],
+  });
+  const read = async (route) => {
+    if (route === 'user') return { login: 'dev' };
+    if (route.endsWith('page=1'))
+      return Array.from({ length: 100 }, () => ({ owner: { login: 'two', type: 'Organization' } }));
+    throw Error('Page unavailable');
+  };
+  assert.deepEqual((await checkGithubCli(store, read)).scopes, ['two']);
+  assert.equal(store.config('hostChecks')['Worker:github:cli'].partial, true);
+  const denied = await checkGithubCli(store, async () => {
+    throw Object.assign(Error(), { status: 401 });
+  });
+  assert.equal(denied.status, 'denied');
+  assert.equal(denied.scopes, undefined);
+  const checks = store.board().hostChecks;
+  assert.deepEqual(checks['Codex:github'].scopes, ['one']);
+  assert.equal(checks['Claude:slack'].status, 'connected');
+});
 const work = {
   title: 'API-12: refine checkout',
   project: 'acme/api',

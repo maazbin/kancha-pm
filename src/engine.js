@@ -5,6 +5,7 @@ import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { text, link, itemInput, settingsInput, now } from './store.js';
 import { postQuestion, sync } from './sources.js';
+import { checkGithubCli, hostProbeFields, saveCheck } from './connections.js';
 import {
   catalog,
   projectIndex,
@@ -82,20 +83,14 @@ export function commands(store) {
     arg(
       'record_connector_check',
       'Record a real read-only connection probe from this coding host. This records availability without storing credentials.',
-      {
-        host: text(120),
-        provider: z.enum(['github', 'jira']),
-        status: z.enum(['connected', 'missing', 'denied']),
-        identity: z.string().max(200).optional(),
-      },
-      (a) =>
-        store.tx(() => {
-          const key = a.host + ':' + a.provider,
-            checks = store.config('hostChecks', {});
-          const result = { ...a, checked: now() };
-          store.set('hostChecks', { ...checks, [key]: result });
-          return result;
-        }),
+      hostProbeFields,
+      (a) => saveCheck(store, a),
+    ),
+    arg(
+      'check_github_cli',
+      'Check the worker’s existing gh login and list organizations with at least one visible repository.',
+      {},
+      () => checkGithubCli(store),
     ),
     arg(
       'follow_board',

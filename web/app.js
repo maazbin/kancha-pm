@@ -1,4 +1,5 @@
 import { projectViews } from './project-views.js';
+import { connections, setupDialog, download, probePrompt } from './connections.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
   dialog = $('#dialog'),
@@ -11,6 +12,7 @@ const navs = {
   projects: ['Projects', 'layers'],
   signals: ['Signals', 'activity'],
   history: ['Activity', 'history'],
+  connections: ['Connections', 'plug'],
   settings: ['Workspace', 'settings-2'],
 };
 const icons = {
@@ -222,25 +224,8 @@ function settings() {
     header('Workspace', 'Choose what your PM follows on this device.') +
     panel(
       'Coding-agent connections',
-      '<p>Start your day in your coding agent to discover existing GitHub and Jira MCP access. Follow boards in Projects. Configure the optional native readers below for unattended refreshes.</p>',
-      action('projects', 'Open projects', 'subtle'),
-    ) +
-    panel(
-      'Last host checks',
-      Object.values(board.hostChecks || {})
-        .map(
-          (c) =>
-            '<div class="historyrow"><b>' +
-            esc(c.provider) +
-            '</b><small>' +
-            esc(c.host) +
-            ' · ' +
-            esc(c.status) +
-            ' · ' +
-            esc(date(c.checked)) +
-            '</small></div>',
-        )
-        .join('') || empty('No coding agent has reported a connection check yet.'),
+      '<p>Set up MCP, reuse your existing sign-ins and see verified access.</p>',
+      action('connections', 'Open connections', 'subtle'),
     ) +
     `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
   );
@@ -262,6 +247,7 @@ function render() {
     watches,
     history: historyPage,
     settings,
+    connections: () => connections({ board, header, panel, esc, action, date }),
     ...projectViews({ board, header, panel, action, esc, empty, tile }),
   }[page]();
   document.title = navs[page][0] + ' · Kancha';
@@ -454,6 +440,40 @@ async function show(id) {
   openBrief(b.item, b.checkout);
 }
 async function handle(a, v) {
+  if (a === 'mcp-setup') {
+    setupDialog({ config: await api('mcp-config'), modal, esc, action, notice });
+    return;
+  }
+  if (a === 'connection-prompt') {
+    modal(
+      'Check existing connections',
+      'Coding agent',
+      '<p>Paste this request into your coding agent, then return here for the results.</p><textarea id="install-prompt" aria-label="Connection check prompt" rows="6" readonly>' +
+        esc(probePrompt) +
+        '</textarea>' +
+        action('copy-install', 'Copy request', 'primary'),
+    );
+    return;
+  }
+  if (a === 'copy-install' || a === 'copy-config') {
+    const field = $(a === 'copy-install' ? '#install-prompt' : '#mcp-json');
+    try {
+      await navigator.clipboard.writeText(field.value);
+      notice('Copied to clipboard.');
+    } catch {
+      field.select();
+      notice('Text selected. Use your copy shortcut.');
+    }
+    return;
+  }
+  if (a === 'export-config') {
+    download(JSON.parse($('#mcp-json').value));
+    return;
+  }
+  if (a === 'check-gh-cli') {
+    await op('check_github_cli', {}, 'GitHub CLI check finished.');
+    return;
+  }
   if (Object.hasOwn(navs, a)) {
     navigate(a);
     return;

@@ -1,6 +1,6 @@
 ---
 name: kancha-personal-pm
-description: Run the developer's personal PM workflow with Kancha local MCP tools. Use for starting the day, choosing the next action, preparing a work brief, identifying a blocker, watching a decision, checking a reminder, or leaving a private checkpoint.
+description: Run the developer's personal PM workflow with Kancha local MCP tools. Use to check existing agent connections or visible GitHub organizations, start the day, choose a next action, prepare a work brief, track a decision, or save a checkpoint.
 ---
 
 # Kancha personal PM
@@ -9,7 +9,9 @@ Your user is the developer at this desk. Use the Kancha tools exposed by the hos
 
 ## Opening the day
 
-On first use in a coding engine, inspect its actual GitHub and Atlassian MCP tools. Make a read-only identity or accessible-resource request through each available connector. Call `record_connector_check` for each provider with the host's name and observed result. If a source is missing or denies access, ask for only that connection or scope. Never request a second token for a successful host read. Use the developer’s existing login across their selected repositories.
+On first use or when the developer asks to verify connections, inspect this host's tools and call `project_scope` to verify Kancha. Use read-only metadata queries for the requested services. For Jira, use accessible resources and record the verified Jira sites. For Slack, read the current workspace identity or accessible workspaces. For GitHub, read the signed-in login and page through visible repositories, collecting their organization owners. An installed app, membership, or a local remote alone cannot prove repository access.
+
+Report each host result with `record_connector_check`: host name, provider slug such as `jira`, `slack` or `github`, status, optional identity, and verified scope names. Set `partial` if the list was truncated or scope enumeration failed after identity succeeded. Use `missing` for absent tools, `denied` for rejected access, and `unavailable` for service errors. Record metadata only. When the GitHub connector is absent or denied, call `check_github_cli` to try the existing worker login. Keep the two results independent. A successful route is sufficient. Only suggest configuring a service the developer wants and cannot already use. The dashboard's **Connections → Set up MCP** provides a setup request and downloadable JSON. Let the coding client handle OAuth.
 
 Call `project_scope` before discovery. If the scope is empty, show the accessible board names and Git remotes and ask which ones this developer follows. A colleague’s dashboard is a discovery aid; resolve each board separately and keep its site-qualified ID. Use `follow_board` for each selected board, `follow_repo` for selected GitHub repositories, and `register_checkout` separately for each local repo. Additions leave other boards, repos and worktrees intact.
 

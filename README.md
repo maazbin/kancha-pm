@@ -75,6 +75,14 @@ The sample desk supports this complete loop with **Simulate owner reply**. Live 
 
 ## Background and local data
 
+### Connect your coding agent
+
+Open **Connections → Set up MCP** on the personal dashboard. Copy the setup request into your coding agent, or download the JSON for a client with an `mcpServers` configuration. The generated Kancha entry uses the paths and data directory on the worker. Claude Code supports project-level `.mcp.json`. For Codex, run `npm run setup -- codex` from the installed clone. The file merge runs in your browser and retains existing server entries in the downloaded copy.
+
+Use **Get agent prompt** to test a Jira or Slack connection already available in your host. Select an optional server in the JSON dialog only when setting it up for the first time in a compatible OAuth client. The provider handles sign-in. GitHub can use either the coding agent's connector or **Check GitHub CLI** with an existing login. Connections lists organizations with visible repositories and labels partial results. Access discovery does not subscribe the developer to projects. [Atlassian MCP setup](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/) · [Slack MCP setup and client requirements](https://docs.slack.dev/ai/mcp-server/)
+
+### Worker and storage
+
 - `npm start -- --notify` enables native reminders. Dashboard markers also work in the browser. Quiet hours use your device's timezone. Snoozes and delivered reminders persist across sessions.
 - **Windows sign-in startup** is optional. Run `./scripts/start-at-login.ps1` in PowerShell to install a user Startup shortcut. Run it with `-Remove` to remove the shortcut. No administrator access is required. On other systems run the dashboard under your own user service. Linux native delivery requires `notify-send`. macOS uses `osascript`.
 - Native reminders depend on OS notification permissions and availability. When the laptop sleeps, the next successful check reconciles the latest work before delivering pending reminders. A host-only watch can raise a time reminder while source verification still needs an agent session.

@@ -10,11 +10,12 @@ import { serveMcp } from './mcp.js';
 import { startServer } from './server.js';
 import { seedDemo } from './demo.js';
 import { sync } from './sources.js';
+import { mcpConfig } from './connections.js';
 
 const cli = fileURLToPath(import.meta.url);
 const root = path.dirname(path.dirname(cli));
 const [cmd = 'dashboard', ...args] = process.argv.slice(2);
-const tpl = { command: process.execPath, args: [cli, 'mcp'] };
+const tpl = mcpConfig(process.env.KANCHA_HOME).mcpServers['kancha-pm'];
 function openBrowser(address) {
   const [name, opts] =
     process.platform === 'win32'
@@ -41,7 +42,6 @@ async function setup() {
   }
   if (!target || target === 'config') {
     console.log(JSON.stringify({ mcpServers: { 'kancha-pm': tpl } }, null, 2));
-    console.log('Skill: ' + path.join(root, 'skills', 'personal-pm', 'SKILL.md'));
     return;
   }
   if (!['codex', 'claude'].includes(target)) throw Error('Choose codex, claude, or config.');

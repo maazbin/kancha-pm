@@ -916,3 +916,63 @@ code {
 .bar b {
   text-align: right;
 }
+.connection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.connection-result {
+  padding: 0.8rem 0;
+  overflow-wrap: anywhere;
+}
+.connection-result + .connection-result {
+  border-top: 1px solid var(--line);
+}
+.connection-result > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.connection-result small,
+.setup-stack small {
+  display: block;
+  margin-top: 0.4rem;
+}
+.connection-result p {
+  margin-bottom: 0;
+  font-size: 0.9rem;
+}
+.setup-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+.setup-stack h3,
+.setup-stack p {
+  margin: 0;
+}
+.setup-stack h3:not(:first-child) {
+  margin-top: 1rem;
+}
+.setup-stack > button {
+  justify-self: start;
+}
+.setup-stack fieldset {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  padding: 0.65rem;
+}
+.setup-stack fieldset input {
+  width: auto;
+}
+.setup-stack textarea,
+#install-prompt {
+  width: 100%;
+}
+#mcp-json {
+  font-family: monospace;
+  white-space: pre;
+}

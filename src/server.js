@@ -8,11 +8,13 @@ import { sync } from './sources.js';
 import { deliver } from './desktop.js';
 import { openStore } from './store.js';
 import { seedDemo } from './demo.js';
+import { mcpConfig } from './connections.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const assets = {
   '/': 'index.html',
   '/app.js': 'app.js',
   '/project-views.js': 'project-views.js',
+  '/connections.js': 'connections.js',
   '/style.css': 'style.css',
   '/mark.svg': 'mark.svg',
 };
@@ -107,6 +109,8 @@ export async function startServer(store, { port = 4317, background = true, nativ
       if (req.method === 'GET' && url.pathname === '/api/board') {
         const b = activeStore.board();
         result = { ...b, markers: markers(b), quiet: quiet(b.settings), standaloneDemo: store.demo };
+      } else if (req.method === 'GET' && url.pathname === '/api/mcp-config') {
+        result = mcpConfig(activeStore.base, activeStore.demo);
       } else if (req.method === 'POST' && url.pathname === '/api/action') {
         if (!req.headers['content-type']?.startsWith('application/json'))
           return fail(415, 'Expected JSON');
