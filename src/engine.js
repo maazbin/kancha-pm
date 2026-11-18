@@ -5,6 +5,21 @@ import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { text, link, itemInput, settingsInput, now } from './store.js';
 import { postQuestion, sync } from './sources.js';
+import {
+  catalog,
+  projectIndex,
+  boardInput,
+  followBoard,
+  observeBoard,
+  registerCheckout,
+  readCheckout,
+  setAssociation,
+  modelFields,
+  pull,
+  jiraIssue,
+  followRepo,
+  repoInput,
+} from './projects.js';
 
 const exec = promisify(execFile);
 const id = text(2000);
@@ -19,8 +34,7 @@ const allowedItem = (store, id) => {
   if (!i.visible) throw Error('Item is outside the current scope');
   return i;
 };
-async function checkoutContext(store) {
-  const dir = store.settings().checkout;
+async function checkoutContext(dir) {
   if (!dir) return null;
   if (!isAbsolute(dir)) throw Error('Choose an absolute checkout path.');
   const git = async (args) =>
@@ -37,6 +51,76 @@ async function checkoutContext(store) {
 }
 export function commands(store) {
   const map = [
+    arg(
+      'project_scope',
+      'Inspect this developer’s followed boards, repository hints and verified checkout origins before discovering work.',
+      {},
+      () => catalog(store),
+    ),
+    arg(
+      'follow_repo',
+      'Follow one GitHub repository through the existing host connector. Keeps the other repos and boards.',
+      { repo: repoInput },
+      (a) => followRepo(store, a.repo),
+    ),
+    arg(
+      'unfollow_scope',
+      'Remove one selected local board, repo or checkout from discovery. Personal work and the other sources remain available.',
+      { type: z.enum(['board', 'repository', 'checkout']), key: text(2000), confirmed: z.literal(true) },
+      (a) =>
+        store.tx(() => {
+          if (a.type === 'board') {
+            store.db.prepare('DELETE FROM membership WHERE board=?').run(a.key);
+            store.db.prepare('DELETE FROM boards WHERE id=?').run(a.key);
+          }
+          if (a.type === 'repository')
+            store.db.prepare('DELETE FROM followed_repos WHERE repo=?').run(a.key.toLowerCase());
+          if (a.type === 'checkout') store.db.prepare('DELETE FROM checkouts WHERE path=?').run(a.key);
+          return catalog(store);
+        }),
+    ),
+    arg(
+      'record_connector_check',
+      'Record a real read-only connection probe from this coding host. This records availability without storing credentials.',
+      {
+        host: text(120),
+        provider: z.enum(['github', 'jira']),
+        status: z.enum(['connected', 'missing', 'denied']),
+        identity: z.string().max(200).optional(),
+      },
+      (a) =>
+        store.tx(() => {
+          const key = a.host + ':' + a.provider,
+            checks = store.config('hostChecks', {});
+          const result = { ...a, checked: now() };
+          store.set('hostChecks', { ...checks, [key]: result });
+          return result;
+        }),
+    ),
+    arg(
+      'follow_board',
+      'Add or edit one Jira board and its optional GitHub repo hints. Other boards and checkouts stay independent.',
+      boardInput,
+      (a) => followBoard(store, a),
+    ),
+    arg(
+      'observe_board',
+      'Record actual Jira board membership from an authorized board or its saved filter. Partial pages add. Complete replaces only this board’s previous membership.',
+      { boardUrl: link, issues: z.array(link).max(10000), complete: z.boolean().default(false) },
+      (a) => observeBoard(store, a),
+    ),
+    arg(
+      'register_checkout',
+      'Add a local checkout. Read its Git origin to identify the matching GitHub repository.',
+      { path: text(1500) },
+      (a) => registerCheckout(store, a.path),
+    ),
+    arg(
+      'confirm_pr_issue',
+      'Record or remove the developer’s explicit confirmation of a PR-to-Jira relationship. Requires both source URLs.',
+      { prUrl: link, issueUrl: link, enabled: z.boolean().default(true) },
+      (a) => setAssociation(store, a.prUrl, a.issueUrl, a.enabled),
+    ),
     arg(
       'get_my_focus',
       'Read the personal queue, waiting items, source freshness, and current focus.',
@@ -67,7 +151,7 @@ export function commands(store) {
             checkAt: i.watch.checkAt,
           })),
           followUpCount: waiting.length,
-          scope: { repos: b.settings.repos, projects: b.settings.projects },
+          scope: { repos: b.settings.repos, projects: b.settings.projects, ...b.catalog },
           sync: b.sync,
           time: b.time,
         };
@@ -99,7 +183,33 @@ export function commands(store) {
       'prepare_action',
       'Get source evidence, decision, private checkpoint, and selected local checkout.',
       { id },
-      async (a) => ({ item: allowedItem(store, a.id), checkout: await checkoutContext(store) }),
+      async (a) => {
+        const i = allowedItem(store, a.id),
+          mapping = projectIndex(
+            store,
+            store.all().filter((i) => i.visible),
+          ).describe(i);
+        const projects = new Set(
+          mapping.repo ? [mapping.repo] : mapping.relatedPRs.map((url) => pull(url).repo),
+        );
+        const checked = await Promise.all(
+          mapping.checkouts.map(async (p) => {
+            try {
+              const actual = await readCheckout(p);
+              return projects.has(actual.repo) ? p : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        mapping.checkouts = checked.filter(Boolean);
+        const legacy = store.settings().checkout;
+        let checkout = null;
+        if (mapping.checkouts.length === 1) checkout = await checkoutContext(mapping.checkouts[0]);
+        else if (!mapping.checkouts.length && legacy && !mapping.repo && !jiraIssue(i.url))
+          checkout = await checkoutContext(legacy);
+        return { item: { ...i, mapping }, checkout, checkoutOptions: mapping.checkouts };
+      },
     ),
     arg(
       'capture_work',
@@ -107,11 +217,15 @@ export function commands(store) {
       {
         ...itemInput.shape,
         externalKey: text(500).optional(),
+        ...modelFields,
       },
       (a) => {
-        const key = a.externalKey || a.url;
+        const key = pull(a.url)?.url || jiraIssue(a.url)?.url || a.externalKey || a.url;
         const stable = key ? 'host:' + createHash('sha256').update(key).digest('hex') : undefined;
-        return store.put(a, key ? 'host' : 'local', stable);
+        return store.put(a, key ? 'host' : 'local', stable, {
+          ...(a.branch !== undefined ? { branch: a.branch } : {}),
+          ...(a.linkedIssues !== undefined ? { linkedIssues: a.linkedIssues } : {}),
+        });
       },
     ),
     arg(

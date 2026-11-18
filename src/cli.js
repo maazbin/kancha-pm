@@ -71,6 +71,27 @@ async function setup() {
   );
 }
 async function main() {
+  if (cmd === 'status') {
+    const port = Number(process.env.KANCHA_PORT || 4317),
+      address = 'http://127.0.0.1:' + port;
+    let health;
+    try {
+      health = await fetch(address + '/health', { signal: AbortSignal.timeout(2500) }).then((r) =>
+        r.json(),
+      );
+    } catch {}
+    if (health?.app !== 'kancha-pm')
+      throw Error(
+        'No Kancha worker responding at ' + address + '. Start npm run worker in this environment.',
+      );
+    console.log(
+      (health.demo ? 'Sample' : 'Personal') +
+        ' worker is responding at ' +
+        address +
+        '/. On a remote machine, forward this port to your browser.',
+    );
+    return;
+  }
   if (cmd === 'setup') return setup();
   if (cmd === 'help' || cmd === '--help') {
     console.log(

@@ -21,6 +21,8 @@ The personal dashboard is at **http://127.0.0.1:4317**. Choose **Explore the sam
 
 ## Give your coding agent the PM
 
+**One developer, one private desk, many projects.** Clone this repository in your own environment and tell your coding agent: “Install Kancha for this engine, start its worker, check my existing GitHub and Jira MCP connections, and let me choose my boards and repositories.” The repository includes entry instructions for Claude Code and AGENTS.md-aware agents. Each developer keeps their own database and permissions. Point two coding engines at the same private data directory if you want to share your own desk between them.
+
 Run the command for your preferred host from the permanent install location.
 
 ```sh
@@ -34,6 +36,20 @@ Setup registers a local stdio MCP server through the host's own CLI and installs
 For another MCP client, run `npm run setup -- config` and use the printed absolute command and arguments. Import `skills/personal-pm/SKILL.md` into the client's skill mechanism if supported. If you move the checkout, register the new path. A host that uses a hosted model processes the context your agent sends it.
 
 ## Connect real work
+
+### Use your existing MCP connections first
+
+Your agent checks its GitHub and Atlassian tools by making a read-only request. **Workspace → Last host checks** shows which host checked each connection and when. Missing access prompts are specific to the affected source. Your credentials stay with the host. The optional native readers below enable unattended source checks. Host-only data refreshes when the coding agent runs the skill.
+
+In **Projects**, follow each Jira board by its URL, add GitHub repositories independently, and register any local checkouts. Board identity includes the Jira site and numeric board ID. A single board can include issues from several Jira projects. A colleague's dashboard can lead you to a board, but access to that dashboard alone does not establish issue membership.
+
+The agent imports observed board results, then joins source records by **PR URL → full Jira issue URL → observed board memberships**. Several boards can contain an issue, and one PR can reference multiple issues. A bare issue key on a branch or PR title produces a candidate that you can confirm in the work brief. A repository association is only a search hint. Local checkout registration reads the Git origin. If two worktrees match, the handoff offers both. **Signals** graphs personal work by state and open work by board, and lists actionable alerts. Board totals may overlap.
+
+### Local or cloud worker
+
+Run `npm run worker` in the developer's environment and `npm run status` to check it. On the same computer open **http://127.0.0.1:4317/** or **http://localhost:4317/**. A GitHub repository URL displays the source. A different machine’s loopback URL reaches that other machine.
+
+For a private VM with SSH, run the worker there and run `ssh -N -L 4317:127.0.0.1:4317 user@your-vm` on your laptop. Open the laptop's local address. Use an available port on both ends if 4317 is occupied. This setup needs a long-running Node process, persistent SQLite storage and a private tunnel. A hosted chat without a process runtime and port forwarding cannot serve this UI. If the remote worker sleeps, source checks resume when it wakes. Native OS pop-ups appear on the worker machine; your browser can show the dashboard markers through the tunnel.
 
 Open **Workspace**, enter your working hours, and select only the repositories or projects you want the PM to follow. Save, then choose **Check sources now**.
 

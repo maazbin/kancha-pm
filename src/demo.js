@@ -1,6 +1,45 @@
 import { now } from './store.js';
+import { followBoard, observeBoard } from './projects.js';
+function seedProjects(s) {
+  if (s.config('sampleProjects', false)) return;
+  const site = 'https://example.atlassian.net',
+    boards = [
+      ['Mobile delivery', 12, ['MOB-42', 'BILL-26']],
+      ['Billing release', 37, ['BILL-26']],
+    ];
+  s.tx(() => {
+    // Only sample data is edited. Keep the user's sample workflow state intact.
+    for (const [id, key] of [
+      ['checkout', 'MOB-42'],
+      ['sync', 'BILL-26'],
+    ]) {
+      const i = s.get(id);
+      s.save({ ...i, url: site + '/browse/' + key });
+    }
+    const pr = s.get('receipt');
+    s.save({
+      ...pr,
+      url: 'https://github.com/example/checkout/pull/193',
+      linkedIssues: [site + '/browse/BILL-26'],
+    });
+  });
+  for (const [name, id, keys] of boards) {
+    const url = site + '/jira/software/c/projects/MCQ/boards/' + id;
+    followBoard(s, { name, url, repos: ['example/checkout'] });
+    observeBoard(s, {
+      boardUrl: url,
+      issues: keys.map((key) => site + '/browse/' + key),
+      complete: true,
+    });
+  }
+  s.set('sampleProjects', true);
+}
 export function seedDemo(s) {
-  if (!s.demo || s.config('seeded', false)) return;
+  if (!s.demo) return;
+  if (s.config('seeded', false)) {
+    seedProjects(s);
+    return;
+  }
   const lock = s.acquire('seed');
   if (!lock) return;
   try {
@@ -92,6 +131,7 @@ export function seedDemo(s) {
       s.history(i.id, 'Nadia replied to the invoice question');
     });
     s.set('seeded', true);
+    seedProjects(s);
   } finally {
     s.release('seed', lock);
   }

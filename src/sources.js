@@ -88,7 +88,16 @@ export async function githubItems(repo, me, call = gh) {
         priority: kind === 'review' ? 'high' : 'normal',
         evidence: evidence('GitHub description', r.body, r.html_url),
       },
-      extra: { ref: String(r.number), sourceKey: '#' + r.number },
+      extra: {
+        ref: String(r.number),
+        sourceKey: '#' + r.number,
+        branch: r.head?.ref,
+        linkedIssues: [
+          ...new Set(
+            (r.body || '').match(/https:\/\/[a-zA-Z0-9.-]+\/browse\/[A-Z][A-Z0-9_]*-[1-9]\d*\b/g) || [],
+          ),
+        ],
+      },
     });
   }
   for (const r of issues) put(r, 'task', 'Assigned to you on GitHub.');
@@ -293,8 +302,8 @@ export async function sync(
           (source === 'github' && !activeCfg.repos.includes(project))
         )
           return;
-        const current = new Set(incoming.map((x) => x.id));
-        for (const row of incoming) store.put(row.fields, source, row.id, row.extra);
+        const current = new Set();
+        for (const row of incoming) current.add(store.put(row.fields, source, row.id, row.extra).id);
         for (const item of store.all().filter((i) => i.source === source && i.project === project)) {
           try {
             if (!current.has(item.id)) {

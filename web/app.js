@@ -1,3 +1,4 @@
+import { projectViews } from './project-views.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
   dialog = $('#dialog'),
@@ -7,6 +8,8 @@ const navs = {
   desk: ['Focus desk', 'layout-dashboard'],
   queue: ['Work queue', 'layers'],
   watches: ['Follow-ups', 'bell-ring'],
+  projects: ['Projects', 'layers'],
+  signals: ['Signals', 'activity'],
   history: ['Activity', 'history'],
   settings: ['Workspace', 'settings-2'],
 };
@@ -217,7 +220,29 @@ function settings() {
   );
   return (
     header('Workspace', 'Choose what your PM follows on this device.') +
-    `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Connected sources', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
+    panel(
+      'Coding-agent connections',
+      '<p>Start your day in your coding agent to discover existing GitHub and Jira MCP access. Follow boards in Projects. Configure the optional native readers below for unattended refreshes.</p>',
+      action('projects', 'Open projects', 'subtle'),
+    ) +
+    panel(
+      'Last host checks',
+      Object.values(board.hostChecks || {})
+        .map(
+          (c) =>
+            '<div class="historyrow"><b>' +
+            esc(c.provider) +
+            '</b><small>' +
+            esc(c.host) +
+            ' · ' +
+            esc(c.status) +
+            ' · ' +
+            esc(date(c.checked)) +
+            '</small></div>',
+        )
+        .join('') || empty('No coding agent has reported a connection check yet.'),
+    ) +
+    `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
   );
 }
 function render() {
@@ -231,7 +256,14 @@ function render() {
   $('#crumb').textContent = navs[page][0];
   $('#profile').innerHTML =
     `<div class="person"><span class="avatar">${esc((board.settings.name || 'K').slice(0, 1).toUpperCase())}</span><div>${esc(board.settings.name)}<small>${board.demo ? 'Sample desk' : 'Personal desk'}</small></div></div>`;
-  main.innerHTML = { desk, queue, watches, history: historyPage, settings }[page]();
+  main.innerHTML = {
+    desk,
+    queue,
+    watches,
+    history: historyPage,
+    settings,
+    ...projectViews({ board, header, panel, action, esc, empty, tile }),
+  }[page]();
   document.title = navs[page][0] + ' · Kancha';
 }
 function navigate(p) {
@@ -266,6 +298,34 @@ function openBrief(i, context) {
         )
         .join('')
     : empty('Attach a source to prepare this action.');
+  const m = i.mapping;
+  const relation =
+    m && (m.repo || m.links.length)
+      ? '<section class="block"><b>Project links</b><p>' +
+        esc(
+          m.boards
+            .map((id) => {
+              const b = board.catalog.boards.find((b) => b.id === id);
+              return b ? b.name + ' (' + id + ')' : id;
+            })
+            .join(', ') || 'Board membership unverified',
+        ) +
+        '</p>' +
+        m.links.map((l) => '<p>' + esc(l.reason) + ' · ' + link(l.url, l.url) + '</p>').join('') +
+        m.relatedPRs.map((url) => '<p>Linked PR · ' + link(url, url) + '</p>').join('') +
+        m.candidates
+          .map(
+            (url) =>
+              '<p>Possible match · ' +
+              link(url, url) +
+              ' ' +
+              action('confirm-link', 'Confirm link', 'subtle', 'check', url) +
+              '</p>',
+          )
+          .join('') +
+        (m.checkouts.length ? '<p>Matching checkouts · ' + esc(m.checkouts.join(', ')) + '</p>' : '') +
+        '</section>'
+      : '';
   const hasWatch = w && w.status !== 'closed';
   const follow = hasWatch
     ? `<hr class="hr"><h3>${esc({ waiting: 'Waiting on ' + w.owner, reply: 'Review the reply', ready: 'Ready to resume' }[w.status])}</h3><div class="block">${esc(w.question)}<p>${esc(w.owner)} · ${esc(date(w.checkAt))} · ${esc(w.delivery)}</p></div>${w.candidate && w.status === 'reply' ? `<div class="block"><b>${esc(w.candidate.display || w.candidate.owner)}</b><p>${esc(w.candidate.body)}</p>${link(w.candidate.url, 'Open reply')}</div>` : ''}${w.answer ? `<div class="block">${esc(w.answer)}</div>` : ''}<div class="actions">${w.status === 'reply' ? action('confirmReply', 'Use this answer', 'primary') + action('dismissReply', 'Keep watching') : ''}${w.status === 'waiting' ? action('answer', 'Record an answer') + (!w.posted && ['github', 'jira', 'demo'].includes(i.source) ? action('postpreview', 'Review & post question') : '') + (board.demo ? action('simulate', 'Simulate owner reply') : '') : ''}</div>`
@@ -287,7 +347,7 @@ function openBrief(i, context) {
   modal(
     i.title,
     tag(i) + ' / ' + i.project,
-    `<div class="metarow">${badge(status(i), w?.status || i.stage)}${badge(i.priority)}${link(i.url, 'Open source')}</div><p>${esc(i.why)}</p>${i.due ? `<p>Due ${esc(date(i.due))}</p>` : ''}${context?.branch ? `<p class="footnote">Checkout · ${esc(context.branch)} @ ${esc(context.commit)}</p>` : ''}<div class="actions">${opts}</div>${follow}<hr class="hr"><div class="sectionhead"><h3>Evidence</h3>${action('attach', 'Attach', 'subtle', 'paperclip')}</div>${evidence}<div class="sectionhead"><h3>Private checkpoint</h3>${action('checkpoint', 'Edit', 'subtle', 'pencil')}</div><p>${esc(i.checkpoint || 'Save the exact place to pick up next time.')}</p>`,
+    `<div class="metarow">${badge(status(i), w?.status || i.stage)}${badge(i.priority)}${link(i.url, 'Open source')}</div><p>${esc(i.why)}</p>${i.due ? `<p>Due ${esc(date(i.due))}</p>` : ''}${context?.branch ? `<p class="footnote">Checkout · ${esc(context.branch)} @ ${esc(context.commit)}</p>` : ''}<div class="actions">${opts}</div>${relation}${follow}<hr class="hr"><div class="sectionhead"><h3>Evidence</h3>${action('attach', 'Attach', 'subtle', 'paperclip')}</div>${evidence}<div class="sectionhead"><h3>Private checkpoint</h3>${action('checkpoint', 'Edit', 'subtle', 'pencil')}</div><p>${esc(i.checkpoint || 'Save the exact place to pick up next time.')}</p>`,
   );
 }
 const localDT = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -399,6 +459,42 @@ async function handle(a, v) {
     return;
   }
   const i = item(selected);
+  if (a === 'repo-form') {
+    modal(
+      'Follow a GitHub repository',
+      'Project scope',
+      '<form data-form="repo-form" class="inlineform">' +
+        field('Owner/repository', 'repo', '', { required: true }) +
+        submit('Follow repository') +
+        '</form>',
+    );
+    return;
+  }
+  if (a === 'board-form' || a === 'checkout-form') {
+    const b = a === 'board-form';
+    modal(
+      b ? 'Follow a Jira board' : 'Register a checkout',
+      'Project scope',
+      '<form class="inlineform" data-form="' +
+        a +
+        '">' +
+        (b
+          ? field('Board name', 'name', '', { required: true }) +
+            field('Jira board URL', 'url', '', { required: true, type: 'url' }) +
+            field('Possible GitHub repositories', 'repos', '', {
+              hint: 'Comma-separated owner/repo hints. A repo alone cannot assign a PR to a board.',
+            })
+          : field('Absolute checkout path', 'path', '', { required: true })) +
+        submit(b ? 'Follow board' : 'Read Git origin') +
+        '</form>',
+    );
+    return;
+  }
+  if (a === 'confirm-link') {
+    await op('confirm_pr_issue', { prUrl: i.url, issueUrl: v, enabled: true }, 'PR link confirmed.');
+    await show(i.id);
+    return;
+  }
   if (a === 'close') {
     dialog.close();
     return;
@@ -496,6 +592,29 @@ document.addEventListener('submit', async (e) => {
   const sb = form.querySelector('[type=submit]');
   sb.disabled = true;
   try {
+    if (k === 'repo-form') {
+      await op('follow_repo', data, 'Repository followed.');
+      dialog.close();
+      return;
+    }
+    if (k === 'board-form' || k === 'checkout-form') {
+      if (k === 'board-form')
+        await op(
+          'follow_board',
+          {
+            name: data.name,
+            url: data.url,
+            repos: data.repos
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean),
+          },
+          'Board followed.',
+        );
+      else await op('register_checkout', { path: data.path }, 'Checkout registered.');
+      dialog.close();
+      return;
+    }
     if (k === 'settings') {
       const list = (v) => [
         ...new Set(

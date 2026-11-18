@@ -12,6 +12,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const assets = {
   '/': 'index.html',
   '/app.js': 'app.js',
+  '/project-views.js': 'project-views.js',
   '/style.css': 'style.css',
   '/mark.svg': 'mark.svg',
 };
@@ -32,7 +33,8 @@ export async function startServer(store, { port = 4317, background = true, nativ
     cookie = randomBytes(24).toString('hex');
   let tick, sample;
   const server = http.createServer(async (req, res) => {
-    const host = '127.0.0.1:' + server.address().port;
+    const port = server.address().port;
+    const host = req.headers.host;
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -45,7 +47,8 @@ export async function startServer(store, { port = 4317, background = true, nativ
       res.end(JSON.stringify({ error: message }));
     };
     try {
-      if (req.headers.host !== host) return fail(403, 'Use the local dashboard address');
+      if (!['127.0.0.1:' + port, 'localhost:' + port].includes(host))
+        return fail(403, 'Use the local dashboard address');
       const origin = req.headers.origin;
       if (origin && origin !== 'http://' + host)
         return fail(403, 'Origin does not match this dashboard');

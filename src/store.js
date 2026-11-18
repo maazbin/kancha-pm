@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { jiraIssue, pull, projectTables, projectIndex } from './projects.js';
 
 export const now = () => new Date().toISOString();
 export const text = (max = 240) => z.string().trim().min(1).max(max);
@@ -81,6 +82,8 @@ export function openStore({ directory, demo = false } = {}) {
       .prepare('SELECT data FROM work ORDER BY id')
       .all()
       .map((x) => JSON.parse(x.data));
+  projectTables(db);
+  db.exec("CREATE INDEX IF NOT EXISTS work_identity ON work(json_extract(data,'$.identity'))");
   function get(id) {
     const row = db.prepare('SELECT data FROM work WHERE id=?').get(id);
     if (!row) throw Error('Work item is unavailable');
@@ -120,18 +123,32 @@ export function openStore({ directory, demo = false } = {}) {
     const parsed = itemInput.parse(fields);
     return tx(() => {
       let item;
+      const identity = pull(parsed.url)?.url || jiraIssue(parsed.url)?.url;
+      if (identity) {
+        const existing = db
+          .prepare(
+            "SELECT id FROM work WHERE json_extract(data,'$.identity')=? OR json_extract(data,'$.url')=? ORDER BY id LIMIT 1",
+          )
+          .get(identity, identity);
+        if (existing) id = existing.id;
+      }
       if (db.prepare('SELECT id FROM work WHERE id=?').get(id)) item = get(id);
       else {
         item = { id, source, stage: 'open', checkpoint: '', snooze: null, created: now() };
         history(id, 'Added to your workspace');
       }
       const combined = [...parsed.evidence, ...(item.personalEvidence || [])];
+      // A confirmed host import keeps its own access/scope lifecycle when native polling overlaps.
+      if (item.hostManaged && source !== 'host') return item;
       return save({
         ...item,
         ...parsed,
         due: parsed.due,
         url: parsed.url,
         ...extra,
+        identity,
+        source: source === 'host' ? 'host' : item.source,
+        hostManaged: source === 'host',
         evidence: combined,
         seen: now(),
         visible: true,
@@ -272,8 +289,10 @@ export function openStore({ directory, demo = false } = {}) {
     });
   }
   function board() {
+    const visible = all().filter((i) => i.visible),
+      projectMap = projectIndex({ db }, visible);
     const clock = Date.now(),
-      items = all().filter((i) => i.visible);
+      items = visible.map((i) => ({ ...i, mapping: projectMap.describe(i) }));
     const available = items.filter(
       (i) => !['waiting', 'done'].includes(i.stage) && !(Date.parse(i.snooze) > clock),
     );
@@ -294,6 +313,8 @@ export function openStore({ directory, demo = false } = {}) {
     return {
       demo,
       settings: settings(),
+      catalog: projectMap.cfg,
+      hostChecks: config('hostChecks', {}),
       items,
       agenda: available.map((i) => i.id),
       activity,
