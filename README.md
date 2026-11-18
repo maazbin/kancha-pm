@@ -64,6 +64,7 @@ The sample desk supports this complete loop with **Simulate owner reply**. Live 
 - Native reminders depend on OS notification permissions and availability. When the laptop sleeps, the next successful check reconciles the latest work before delivering pending reminders. A host-only watch can raise a time reminder while source verification still needs an agent session.
 - The default private data directory is `%LOCALAPPDATA%/KanchaPM` on Windows, or `$XDG_DATA_HOME/kancha-pm` (default `~/.local/share/kancha-pm`) elsewhere. `KANCHA_HOME` overrides it. Keep this value consistent between the dashboard and agent. `KANCHA_PORT` overrides the HTTP port.
 - SQLite stores local work, follow-ups, evidence, checkpoints and notification receipts. Back up the data folder with all Kancha processes stopped. The server listens only on IPv4 loopback. Keep it on your personal machine. Use your OS account and disk protection for stored notes.
+- For hosts that virtualize the user's application-data folder, create a private `kancha.local.json` alongside `package.json` with an absolute `dataDirectory` string. The dashboard and MCP server read the same setting across sessions. An explicit `KANCHA_HOME` takes precedence. The local settings file is ignored by Git.
 - Native access failures are visible in Workspace. Removed native scope and definitive access denials hide affected work and drop source excerpts. Host-imported excerpts require revalidation by the host skill. Private items are not a team-wide permissions or assignment system.
 
 ## Develop and verify

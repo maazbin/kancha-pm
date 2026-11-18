@@ -4,6 +4,7 @@ node_modules/
 *.sqlite*
 *.log
 .kancha/
+kancha.local.json
 coverage/
 test-results/
 playwright-report/

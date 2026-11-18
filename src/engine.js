@@ -59,15 +59,13 @@ export function commands(store) {
             const { id, title, why, project, kind, stage, url } = store.get(k);
             return { id, title, why, project, kind, stage, url };
           }),
-          followUps: waiting
-            .slice(0, 10)
-            .map((i) => ({
-              id: i.id,
-              owner: i.watch.owner,
-              question: i.watch.question,
-              status: i.watch.status,
-              checkAt: i.watch.checkAt,
-            })),
+          followUps: waiting.slice(0, 10).map((i) => ({
+            id: i.id,
+            owner: i.watch.owner,
+            question: i.watch.question,
+            status: i.watch.status,
+            checkAt: i.watch.checkAt,
+          })),
           followUpCount: waiting.length,
           scope: { repos: b.settings.repos, projects: b.settings.projects },
           sync: b.sync,

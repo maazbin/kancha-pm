@@ -1,9 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { commands } from './engine.js';
+import { readFileSync } from 'node:fs';
 
 export async function serveMcp(store) {
-  const mcp = new McpServer({ name: 'kancha-pm', version: '1.0.0' });
+  const skill = readFileSync(new URL('../skills/personal-pm/SKILL.md', import.meta.url), 'utf8');
+  const instructions = skill.slice(skill.indexOf('# Kancha personal PM'));
+  const mcp = new McpServer({ name: 'kancha-pm', version: '1.0.0' }, { instructions });
   for (const op of Object.values(commands(store))) {
     mcp.registerTool(
       op.name,

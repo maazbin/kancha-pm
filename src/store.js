@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -49,12 +49,26 @@ const defaults = {
   checkout: '',
 };
 
+function installDataDirectory() {
+  try {
+    const value = JSON.parse(
+      readFileSync(new URL('../kancha.local.json', import.meta.url), 'utf8'),
+    ).dataDirectory;
+    if (typeof value !== 'string' || !path.isAbsolute(value))
+      throw Error('kancha.local.json requires an absolute dataDirectory.');
+    return value;
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 export function openStore({ directory, demo = false } = {}) {
   const systemDir =
     process.platform === 'win32' && process.env.LOCALAPPDATA
       ? path.join(process.env.LOCALAPPDATA, 'KanchaPM')
       : path.join(process.env.XDG_DATA_HOME || path.join(homedir(), '.local', 'share'), 'kancha-pm');
-  const base = directory || process.env.KANCHA_HOME || systemDir;
+  const base = directory || process.env.KANCHA_HOME || installDataDirectory() || systemDir;
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(path.join(base, demo ? 'demo.sqlite' : 'workspace.sqlite'));
   db.exec(`PRAGMA busy_timeout=8000; PRAGMA journal_mode=WAL;
@@ -112,7 +126,16 @@ export function openStore({ directory, demo = false } = {}) {
         history(id, 'Added to your workspace');
       }
       const combined = [...parsed.evidence, ...(item.personalEvidence || [])];
-      return save({ ...item, ...parsed, ...extra, evidence: combined, seen: now(), visible: true });
+      return save({
+        ...item,
+        ...parsed,
+        due: parsed.due,
+        url: parsed.url,
+        ...extra,
+        evidence: combined,
+        seen: now(),
+        visible: true,
+      });
     });
   }
   function focus(id) {
