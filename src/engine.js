@@ -7,6 +7,8 @@ import { text, link, itemInput, settingsInput, now } from './store.js';
 import { postQuestion, sync } from './sources.js';
 import { checkGithubCli, hostProbeFields, saveCheck } from './connections.js';
 import { day } from './analysis.js';
+import { pluginRead } from './plugins.js';
+import { teamAction } from './team.js';
 import { waitingChat, replyChat } from './chat.js';
 import {
   catalog,
@@ -54,6 +56,28 @@ async function checkoutContext(dir) {
 }
 export function commands(store) {
   const map = [
+    arg(
+      'read_plugin',
+      'List available read tools or read GitHub or Slack using the dashboard plugin connection.',
+      {
+        provider: z.enum(['github', 'slack']),
+        tool: z.string().optional(),
+        input: z.record(z.string(), z.unknown()).optional(),
+      },
+      (a) => pluginRead(store, a.provider, a.tool, a.input),
+    ),
+    arg(
+      'read_team_tickets',
+      'Read sites, projects or a page of shared Jira tickets through the developer’s authorized plugin.',
+      {
+        action: z.enum(['sites', 'projects', 'tickets', 'details']),
+        site: z.string().optional(),
+        project: z.string().optional(),
+        key: z.string().optional(),
+        next: z.string().optional(),
+      },
+      (a) => teamAction(store, a),
+    ),
     arg(
       'set_personal_priority',
       'Override or restore the priority on this personal desk.',

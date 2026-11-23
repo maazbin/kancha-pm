@@ -1,5 +1,9 @@
 # Kancha PM
 
+**For shared project work**, open **Plugins**, choose **Connect Jira**, and sign in with Atlassian. Open **Team tickets**, choose your site and project, then filter by person. The view shows your colleagues’ Jira tickets under your own access permissions. Review and save a title, due date, priority, owner, workflow transition or comment, or create a ticket. The full Jira link is available for custom workflow screens. The sample project lets you try the flow locally.
+
+**Plugins** also supports GitHub through your existing agent or CLI and a directly verified read-only MCP token. Slack uses an approved internal or Marketplace app; the administrator can enter its client ID and secret under **Workspace app setup** or supply `KANCHA_SLACK_CLIENT_ID` and `KANCHA_SLACK_CLIENT_SECRET` on the worker. Register the callback shown on the card. Sign-in and consent occur on the provider’s site. The worker uses MCP OAuth discovery, PKCE and SDK refresh. Disconnect clears the local credentials; revoke the provider grant in the provider account to revoke it everywhere. Plugin credentials are encrypted in the private desk database with a key file beside it. Protect that directory and its backups under your OS account. Developers can still export or merge MCP JSON under **Plugins → Developer settings**.
+
 A personal project manager inside the coding agent you already use. Kancha prepares your next action, remembers where you stopped, and brings a blocker back when someone replies. Your desk runs on your computer. Teammates can answer in Jira or GitHub without installing Kancha.
 
 ![Kancha's personal focus desk, showing a checkout decision and two follow-ups](docs/focus-desk.jpg)
@@ -66,7 +70,7 @@ Kancha uses your existing GitHub CLI credential storage. Supply Jira secrets thr
 ## One complete handoff
 
 1. Open a work brief and choose **Ask / watch**. Enter the exact question, expected responder, and next check time.
-2. **Start local watch** saves the follow-up privately. **Review & post question** shows the destination and text. Confirm to post once to the original Jira or GitHub thread. You can also watch an existing conversation without posting.
+2. **Start local watch** saves the follow-up privately. **Review & post question** shows the destination and text. Confirm to post once to the original Jira thread. You can also watch an existing conversation without posting.
 3. While you wait, the desk suggests other available work. Save your checkpoint before switching. Kancha checks native sources on its configured interval while the service and machine are running.
 4. A new comment from the expected responder raises **Reply received**. Choose **Use this answer** or **Keep watching**. Replies are candidates until confirmed.
 5. **Resume work** returns the item to focus and clears the handoff reminder. **Copy handoff** assembles the decision, source references, and private checkpoint for your coding agent. **Complete** records personal completion. Shared Jira and GitHub state stays under the team's existing workflow.
@@ -77,9 +81,9 @@ The sample desk supports this complete loop with **Simulate owner reply**. Live 
 
 ### Connect your coding agent
 
-Open **Connections → Set up MCP** on the personal dashboard. Copy the setup request into your coding agent, or download the JSON for a client with an `mcpServers` configuration. The generated Kancha entry uses the paths and data directory on the worker. Claude Code supports project-level `.mcp.json`. For Codex, run `npm run setup -- codex` from the installed clone. The file merge runs in your browser and retains existing server entries in the downloaded copy.
+Open **Plugins → Developer settings → Set up MCP** on the personal dashboard. Copy the setup request into your coding agent, or download the JSON for a client with an `mcpServers` configuration. The generated Kancha entry uses the paths and data directory on the worker. Claude Code supports project-level `.mcp.json`. For Codex, run `npm run setup -- codex` from the installed clone. The file merge runs in your browser and retains existing server entries in the downloaded copy.
 
-Use **Get agent prompt** to test a Jira or Slack connection already available in your host. Select an optional server in the JSON dialog only when setting it up for the first time in a compatible OAuth client. The provider handles sign-in. GitHub can use either the coding agent's connector or **Check GitHub CLI** with an existing login. Connections lists organizations with visible repositories and labels partial results. Access discovery does not subscribe the developer to projects. [Atlassian MCP setup](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/) · [Slack MCP setup and client requirements](https://docs.slack.dev/ai/mcp-server/)
+Use **Get agent prompt** to test a Jira or Slack connection already available in your host. Select an optional server in the JSON dialog only when setting it up for the first time in a compatible OAuth client. The provider handles sign-in. GitHub can use either the coding agent's connector or **Check GitHub login** with an existing login. Plugins lists organizations with visible repositories and labels partial results. Access discovery does not subscribe the developer to projects. [Atlassian MCP setup](https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/) · [Slack MCP setup and client requirements](https://docs.slack.dev/ai/mcp-server/)
 
 ### Worker and storage
 

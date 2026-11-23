@@ -10,12 +10,16 @@ import { openStore } from './store.js';
 import { seedDemo } from './demo.js';
 import { mcpConfig } from './connections.js';
 import { chatHistory, submitChat } from './chat.js';
+import { pluginStates, pluginAction, finishPlugin } from './plugins.js';
+import { teamAction } from './team.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const assets = {
   '/': 'index.html',
   '/app.js': 'app.js',
   '/project-views.js': 'project-views.js',
   '/connections.js': 'connections.js',
+  '/team-view.js': 'team-view.js',
+  '/plugin-cards.js': 'plugin-cards.js',
   '/work-views.js': 'work-views.js',
   '/style.css': 'style.css',
   '/mark.svg': 'mark.svg',
@@ -57,6 +61,27 @@ export async function startServer(store, { port = 4317, background = true, nativ
       if (origin && origin !== 'http://' + host)
         return fail(403, 'Origin does not match this dashboard');
       const url = new URL(req.url, 'http://' + host);
+      if (req.method === 'GET' && /^\/oauth\/(jira|slack)$/.test(url.pathname)) {
+        try {
+          await finishPlugin(
+            store,
+            url.pathname.slice(7),
+            url.searchParams,
+            req.headers.cookie || '',
+            'http://' + host,
+          );
+          res.writeHead(303, {
+            Location: '/#connections',
+            'Set-Cookie': 'kancha_oauth=; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=0',
+          });
+          return res.end();
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+          return res.end(
+            '<p>Sign-in could not be completed. Your previous connection is unchanged.</p><a href="/#connections">Return to Plugins</a>',
+          );
+        }
+      }
       let activeStore = store,
         activeMap = map;
       if (url.pathname === '/sample' || url.pathname.startsWith('/sample/')) {
@@ -110,14 +135,22 @@ export async function startServer(store, { port = 4317, background = true, nativ
       let result;
       if (req.method === 'GET' && url.pathname === '/api/board') {
         const b = activeStore.board();
-        result = { ...b, markers: markers(b), quiet: quiet(b.settings), standaloneDemo: store.demo };
+        result = {
+          ...b,
+          plugins: pluginStates(activeStore),
+          markers: markers(b),
+          quiet: quiet(b.settings),
+          standaloneDemo: store.demo,
+        };
       } else if (req.method === 'GET' && url.pathname === '/api/mcp-config') {
         result = mcpConfig(activeStore.base, activeStore.demo);
       } else if (req.method === 'GET' && url.pathname === '/api/chat') {
         result = chatHistory(activeStore);
       } else if (
         req.method === 'POST' &&
-        ['/api/action', '/api/chat', '/api/chat/cancel'].includes(url.pathname)
+        ['/api/action', '/api/chat', '/api/chat/cancel', '/api/plugins', '/api/team'].includes(
+          url.pathname,
+        )
       ) {
         if (!req.headers['content-type']?.startsWith('application/json'))
           return fail(415, 'Expected JSON');
@@ -129,7 +162,17 @@ export async function startServer(store, { port = 4317, background = true, nativ
           chunks.push(chunk);
         }
         const payload = JSON.parse(Buffer.concat(chunks).toString());
-        if (url.pathname === '/api/chat') result = submitChat(activeStore, payload);
+        if (url.pathname === '/api/plugins') {
+          result = await pluginAction(activeStore, payload, 'http://' + host);
+          if (result.state) {
+            res.setHeader(
+              'Set-Cookie',
+              'kancha_oauth=' + result.state + '; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=600',
+            );
+            delete result.state;
+          }
+        } else if (url.pathname === '/api/team') result = await teamAction(activeStore, payload);
+        else if (url.pathname === '/api/chat') result = submitChat(activeStore, payload);
         else if (url.pathname === '/api/chat/cancel')
           result = {
             cancelled: !!activeStore.db

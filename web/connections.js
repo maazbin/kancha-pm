@@ -1,77 +1,9 @@
-const labels = { github: 'GitHub', jira: 'Jira', slack: 'Slack' };
-const states = {
-  connected: 'Verified',
-  denied: 'Access denied',
-  missing: 'Unavailable in this host',
-  unavailable: 'Check unavailable',
-};
-const scopeLabels = {
-  github: 'Organizations with visible repositories',
-  jira: 'Sites',
-  slack: 'Workspaces',
-};
 const endpoints = {
   jira: ['atlassian', 'https://mcp.atlassian.com/v2/mcp'],
   slack: ['slack', 'https://mcp.slack.com/mcp'],
 };
 const probePrompt =
   'Use Kancha to check my existing connections. Make read-only calls through the Jira and Slack tools available in this coding session. For GitHub, use the available connector or the signed-in GitHub CLI. Show the account, Jira sites, Slack workspaces, and GitHub organizations with visible repositories that each check verifies. Record each result in Kancha so it appears in Connections. Ask about setup only for a service I want that you cannot access.';
-
-export function connections({ board, header, panel, esc, action, date }) {
-  const checks = Object.values(board.hostChecks || {});
-  const providers = new Set([...Object.keys(labels), ...checks.map((c) => c.provider)]);
-  const cards = [...providers]
-    .map((provider) => {
-      const rows = checks
-        .filter((c) => c.provider === provider)
-        .sort((a, b) => b.checked.localeCompare(a.checked));
-      const content =
-        rows
-          .map((c) => {
-            const scopes = c.scopes || [];
-            return (
-              '<div class="connection-result"><div><strong>' +
-              esc(c.host) +
-              ' · ' +
-              esc(c.method || 'MCP') +
-              '</strong><span class="pill">' +
-              esc(states[c.status] || c.status) +
-              '</span></div><small>' +
-              esc([c.identity, date(c.checked)].filter(Boolean).join(' · ')) +
-              '</small>' +
-              (c.status === 'connected' && c.scopes
-                ? '<p><b>' +
-                  esc(scopeLabels[provider] || 'Accessible scope') +
-                  '</b><br>' +
-                  esc(scopes.join(', ') || 'None observed') +
-                  (c.partial ? ' · Partial list' : '') +
-                  '</p>'
-                : '') +
-              '</div>'
-            );
-          })
-          .join('') || '<p class="footnote">Awaiting a check from your coding agent.</p>';
-      const verify =
-        provider === 'github' && !board.demo ? action('check-gh-cli', 'Check GitHub CLI', 'subtle') : '';
-      return panel(labels[provider] || esc(provider), content, verify);
-    })
-    .join('');
-  return (
-    header(
-      'Connections',
-      'Set up Kancha in your coding agent and see what it can access.',
-      action('mcp-setup', 'Set up MCP', 'primary', 'plug'),
-    ) +
-    panel(
-      'Check existing access',
-      '<p>Give this request to the coding agent where you use Jira, Slack or GitHub. It can reuse your signed-in connections. Each result below names the host that checked it.</p>',
-      action('connection-prompt', 'Get agent prompt', 'subtle'),
-    ) +
-    '<div class="connection-grid">' +
-    cards +
-    '</div>'
-  );
-}
 
 export function setupDialog({ config, modal, esc, action, notice }) {
   const entry = config.mcpServers['kancha-pm'];

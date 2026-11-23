@@ -126,8 +126,30 @@ export function workViews({ board, header, panel, action, esc, date, empty, tile
     const stalled = open
       .filter((i) => i.stage === 'waiting')
       .sort((a, b) => Date.parse(a.watch?.started) - Date.parse(b.watch?.started));
+    const intake = flow.reduce((n, d) => n + d.added, 0),
+      finished = flow.reduce((n, d) => n + d.completed, 0);
+    const flowText =
+      !intake && !finished
+        ? 'No intake or completions were recorded in the last seven days.'
+        : intake === finished
+          ? 'Intake and completions were even this week.'
+          : intake > finished
+            ? 'New actions outpaced completions by ' + (intake - finished) + ' this week.'
+            : 'Completions outpaced new actions by ' + (finished - intake) + ' this week.';
     return (
       header('Analytics', 'Seven days of personal activity and the work waiting longest.') +
+      '<div class="insight-band"><strong>' +
+      esc(flowText) +
+      '</strong>' +
+      (stalled.length
+        ? '<p>The longest wait is ' +
+          esc(stalled[0].title) +
+          '. ' +
+          esc(stalled[0].watch?.owner || 'The decision owner') +
+          ' has the next response.</p>' +
+          action('brief', 'Review this wait', 'subtle', 'arrow-up-right', stalled[0].id)
+        : '') +
+      '</div>' +
       metrics(
         metric(
           'Added in 7 days',

@@ -1,5 +1,7 @@
 import { projectViews } from './project-views.js';
-import { connections, setupDialog, download, probePrompt } from './connections.js';
+import { setupDialog, download, probePrompt } from './connections.js';
+import { pluginScreen, pluginDialog } from './plugin-cards.js';
+import { teamView } from './team-view.js';
 import { workViews, chatController, chatView } from './work-views.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
@@ -17,7 +19,8 @@ const navs = {
   projects: ['Projects', 'layers'],
   signals: ['Signals', 'activity'],
   history: ['Activity', 'history'],
-  connections: ['Connections', 'plug'],
+  connections: ['Plugins', 'plug'],
+  team: ['Team tickets', 'users'],
   settings: ['Workspace', 'settings-2'],
 };
 const icons = {
@@ -228,15 +231,16 @@ function settings() {
   return (
     header('Workspace', 'Choose what your PM follows on this device.') +
     panel(
-      'Coding-agent connections',
+      'Plugins',
       '<p>Set up MCP, reuse your existing sign-ins and see verified access.</p>',
-      action('connections', 'Open connections', 'subtle'),
+      action('connections', 'Open plugins', 'subtle'),
     ) +
     `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
   );
 }
 let priorityScope = '';
 const chat = chatController({ api, esc, action, date });
+const team = teamView({ api, esc, action, header, panel, modal, notice, link });
 setInterval(() => {
   if (!document.hidden && page === 'chat') void chat.poll();
 }, 2500);
@@ -248,10 +252,23 @@ document.addEventListener('change', (e) => {
 });
 function render() {
   if (!board) return;
-  $('#nav').innerHTML = Object.entries(navs)
+  $('#nav').innerHTML = [
+    ['My day', ['desk', 'priority', 'alarms', 'chat']],
+    ['Shared work', ['team', 'projects', 'analytics']],
+    ['My workspace', ['connections', 'queue', 'watches', 'signals', 'history', 'settings']],
+  ]
     .map(
-      ([k, [t, n]]) =>
-        `<button class="nav ${k === 'settings' ? 'navdivider' : ''}" ${page === k ? 'aria-current="page"' : ''} data-action="${k}">${icon(n)}${t}</button>`,
+      ([label, keys]) =>
+        '<div class="nav-group"><small>' +
+        label +
+        '</small>' +
+        keys
+          .map(
+            (k) =>
+              `<button class="nav" ${page === k ? 'aria-current="page"' : ''} data-action="${k}">${icon(navs[k][1])}${navs[k][0]}</button>`,
+          )
+          .join('') +
+        '</div>',
     )
     .join('');
   $('#crumb').textContent = navs[page][0];
@@ -265,11 +282,13 @@ function render() {
     settings,
     chat: () => chatView({ header, panel }),
     ...workViews({ board, header, panel, action, esc, date, empty, tile, scope: priorityScope }),
-    connections: () => connections({ board, header, panel, esc, action, date }),
+    connections: () => pluginScreen({ board, header, panel, esc, action, date }),
+    team: team.screen,
     ...projectViews({ board, header, panel, action, esc, empty, tile }),
   }[page]();
   document.title = navs[page][0] + ' · Kancha';
   if (page === 'chat') chat.bind();
+  if (page === 'team') team.bind();
 }
 function navigate(p) {
   revision++;
@@ -333,7 +352,7 @@ function openBrief(i, context) {
       : '';
   const hasWatch = w && w.status !== 'closed';
   const follow = hasWatch
-    ? `<hr class="hr"><h3>${esc({ waiting: 'Waiting on ' + w.owner, reply: 'Review the reply', ready: 'Ready to resume' }[w.status])}</h3><div class="block">${esc(w.question)}<p>${esc(w.owner)} · ${esc(date(w.checkAt))} · ${esc(w.delivery)}</p></div>${w.candidate && w.status === 'reply' ? `<div class="block"><b>${esc(w.candidate.display || w.candidate.owner)}</b><p>${esc(w.candidate.body)}</p>${link(w.candidate.url, 'Open reply')}</div>` : ''}${w.answer ? `<div class="block">${esc(w.answer)}</div>` : ''}<div class="actions">${w.status === 'reply' ? action('confirmReply', 'Use this answer', 'primary') + action('dismissReply', 'Keep watching') : ''}${w.status === 'waiting' ? action('answer', 'Record an answer') + (!w.posted && ['github', 'jira', 'demo'].includes(i.source) ? action('postpreview', 'Review & post question') : '') + (board.demo ? action('simulate', 'Simulate owner reply') : '') : ''}</div>`
+    ? `<hr class="hr"><h3>${esc({ waiting: 'Waiting on ' + w.owner, reply: 'Review the reply', ready: 'Ready to resume' }[w.status])}</h3><div class="block">${esc(w.question)}<p>${esc(w.owner)} · ${esc(date(w.checkAt))} · ${esc(w.delivery)}</p></div>${w.candidate && w.status === 'reply' ? `<div class="block"><b>${esc(w.candidate.display || w.candidate.owner)}</b><p>${esc(w.candidate.body)}</p>${link(w.candidate.url, 'Open reply')}</div>` : ''}${w.answer ? `<div class="block">${esc(w.answer)}</div>` : ''}<div class="actions">${w.status === 'reply' ? action('confirmReply', 'Use this answer', 'primary') + action('dismissReply', 'Keep watching') : ''}${w.status === 'waiting' ? action('answer', 'Record an answer') + (!w.posted && ['jira', 'demo'].includes(i.source) ? action('postpreview', 'Review & post question') : '') + (board.demo ? action('simulate', 'Simulate owner reply') : '') : ''}</div>`
     : '';
   const opts =
     i.stage === 'done'
@@ -460,6 +479,27 @@ async function show(id) {
   openBrief(b.item, b.checkout);
 }
 async function handle(a, v) {
+  if (a.startsWith('team-')) return team.handle(a, v);
+  if (a === 'plugin-manage')
+    return pluginDialog({ id: v, board, modal, esc, action, api, refresh, notice });
+  if (a === 'plugin-signin') {
+    const r = await api('plugins', { id: v, action: 'signin' });
+    if (r.authorize) {
+      location.assign(r.authorize);
+      return;
+    }
+    dialog.close();
+    await refresh();
+    notice('Plugin connected.');
+    return;
+  }
+  if (a === 'plugin-check' || a === 'plugin-remove') {
+    await api('plugins', { id: v, action: a === 'plugin-check' ? 'check' : 'disconnect' });
+    dialog.close();
+    await refresh();
+    notice(a === 'plugin-check' ? 'Access verified.' : 'Disconnected from this desk.');
+    return;
+  }
   if (a === 'priority-edit') {
     const i = item(v);
     modal(
@@ -518,7 +558,13 @@ async function handle(a, v) {
     return;
   }
   if (a === 'check-gh-cli') {
-    await op('check_github_cli', {}, 'GitHub CLI check finished.');
+    const result = await op('check_github_cli', {});
+    if (dialog.open) dialog.close();
+    notice(
+      result.status === 'connected'
+        ? 'GitHub login verified.'
+        : 'GitHub login unavailable. Use your agent connection or connect a token.',
+    );
     return;
   }
   if (Object.hasOwn(navs, a)) {
@@ -772,7 +818,7 @@ dialog.addEventListener('click', (e) => {
   }
 });
 async function tick() {
-  if (document.hidden || dialog.open || page === 'settings' || page === 'chat' || saving) return;
+  if (document.hidden || dialog.open || ['settings', 'chat', 'team'].includes(page) || saving) return;
   try {
     await refresh();
   } catch {

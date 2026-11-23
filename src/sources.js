@@ -16,9 +16,8 @@ function sourceError(name, status) {
   e.status = Number(status);
   return e;
 }
-export async function gh(endpoint, payload) {
+export async function gh(endpoint) {
   const args = ['api', '--hostname', 'github.com'];
-  if (payload) args.push('--method', 'POST', '--raw-field', 'body=' + payload);
   args.push(endpoint);
   try {
     const r = await run('gh', args, {
@@ -225,6 +224,8 @@ export async function postQuestion(store, id) {
     const i = store.get(id),
       w = i.watch;
     if (!i.visible || !w || w.status !== 'waiting') throw Error('Open a follow-up first');
+    if (i.source === 'github')
+      throw Error('GitHub is read-only in Kancha. Track this follow-up locally.');
     if (w.posted) return i;
     const marker = '[Kancha follow-up ' + w.key + ']',
       body = w.question + '\n\n' + marker;
@@ -241,9 +242,7 @@ export async function postQuestion(store, id) {
         f.watch.delivery = 'unconfirmed';
       });
       try {
-        if (i.source === 'github')
-          await gh('repos/' + i.project + '/issues/' + i.ref + '/comments', body);
-        else if (i.source === 'jira')
+        if (i.source === 'jira')
           await jiraApi(i.site)('issue/' + encodeURIComponent(i.ref) + '/comment', {
             body: {
               type: 'doc',

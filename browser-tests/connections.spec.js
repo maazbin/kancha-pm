@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 test('MCP setup exports this worker and merges selected services in the browser', async ({ page }) => {
   await page.goto('/#connections');
   await expect(page.getByRole('heading', { name: 'Slack' })).toBeVisible();
+  await page.getByText('Developer settings', { exact: true }).click();
   await page.getByRole('button', { name: 'Set up MCP' }).click();
   const json = page.getByLabel('MCP JSON', { exact: true });
   const entry = JSON.parse(await json.inputValue()).mcpServers['kancha-pm'];
