@@ -123,12 +123,38 @@ export async function teamAction(store, p) {
     });
   }
   const project = projectKey.parse(p.project);
+  if (p.action === 'people') {
+    const query = z.string().trim().min(1).max(100).parse(p.query);
+    if (store.demo)
+      return {
+        people: sampleOptions.assignee.filter((u) => u.name.toLowerCase().includes(query.toLowerCase())),
+      };
+    return access(store, async (read) => {
+      const data = await readOp(read, 'listJiraIssueAssignableUsers', site.id, { project, query });
+      return {
+        people: (Array.isArray(data) ? data : data.users || data.values || [])
+          .filter((u) => u.accountId)
+          .map((u) => ({ id: u.accountId, name: u.displayName })),
+      };
+    });
+  }
   if (p.action === 'tickets') {
-    if (store.demo) return { items: sample(store), next: null };
+    const owner =
+      p.owner === undefined
+        ? '*'
+        : z
+            .string()
+            .max(150)
+            .regex(/^(?:\*|[\w:.@-]*)$/)
+            .parse(p.owner);
+    const clause =
+      owner === '*' ? '' : owner ? ' AND assignee = "' + owner + '"' : ' AND assignee IS EMPTY';
+    if (store.demo)
+      return { items: sample(store).filter((r) => owner === '*' || r.account === owner), next: null };
     return access(store, async (read) => {
       const data = await read('searchJiraIssuesUsingJql', {
         cloudId: site.id,
-        jql: 'project = "' + project + '" ORDER BY updated DESC',
+        jql: 'project = "' + project + '"' + clause + ' ORDER BY updated DESC',
         fields,
         view: 'full',
         maxResults: 100,

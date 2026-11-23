@@ -4,7 +4,10 @@ test('a teammate finds another owner and reviews a ticket change without affecti
 }) => {
   await page.goto('/sample/#team');
   await expect(page.getByRole('heading', { name: 'Project at a glance' })).toBeVisible();
-  await page.getByLabel('Person', { exact: true }).selectOption('nadia');
+  await page.getByLabel('Person', { exact: true }).selectOption('?');
+  await page.getByLabel('Name', { exact: true }).fill('Nad');
+  await page.getByRole('button', { name: 'Find people' }).click();
+  await page.getByRole('button', { name: 'Nadia', exact: true }).click();
   await expect(page.locator('.team-ticket')).toHaveCount(1);
   await page.getByRole('button', { name: 'View ticket' }).click();
   await page.getByLabel('Change', { exact: true }).selectOption('status');

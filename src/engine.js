@@ -70,7 +70,9 @@ export function commands(store) {
       'read_team_tickets',
       'Read sites, projects or a page of shared Jira tickets through the developer’s authorized plugin.',
       {
-        action: z.enum(['sites', 'projects', 'tickets', 'details']),
+        action: z.enum(['sites', 'projects', 'tickets', 'details', 'people']),
+        owner: z.string().optional(),
+        query: z.string().optional(),
         site: z.string().optional(),
         project: z.string().optional(),
         key: z.string().optional(),

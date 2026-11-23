@@ -18,6 +18,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
     version = 0,
     loaded = false;
   const box = () => document.querySelector('#team-content');
+  const people = new Map();
   const read = (operation, extra = {}) => api('team', { action: operation, site, project, ...extra });
   const options = (values, selected) =>
     values
@@ -43,6 +44,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
     options(values, current) +
     '</select></label>';
   function clear() {
+    people.clear();
     rows = [];
     next = null;
     loaded = false;
@@ -51,7 +53,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
   function paint() {
     const root = box();
     if (!root) return;
-    const people = new Map(rows.map((r) => [r.account || '', r.owner || 'Unassigned']));
+    for (const r of rows) people.set(r.account || '', r.owner || 'Unassigned');
     const view = rows.filter((r) => owner === '*' || (r.account || '') === owner);
     const active = view.filter((r) => !r.done);
     const fmt = new Date(),
@@ -83,7 +85,11 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
         ? select(
             'Person',
             'team-person',
-            [{ id: '*', name: 'Everyone' }, ...[...people].map(([id, name]) => ({ id, name }))],
+            [
+              { id: '*', name: 'Everyone' },
+              ...[...people].map(([id, name]) => ({ id, name })),
+              { id: '?', name: 'Find another colleague…' },
+            ],
             owner,
           )
         : '') +
@@ -102,7 +108,10 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
                 (owner === '*' ? 'across this view' : 'for ' + esc(people.get(owner) || 'this person')) +
                 '. ' +
                 (late.length ? late.length + ' past due. ' : '') +
-                (unassigned.length ? unassigned.length + ' need an owner.' : '') +
+                (unassigned.length
+                  ? unassigned.length +
+                    (unassigned.length === 1 ? ' needs an owner.' : ' need an owner.')
+                  : '') +
                 '</p><small>' +
                 view.length +
                 ' shown · ' +
@@ -155,8 +164,36 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
     const person = root.querySelector('#team-person');
     if (person)
       person.onchange = (e) => {
-        owner = e.target.value;
-        paint();
+        if (e.target.value === '?') {
+          e.target.value = owner;
+          modal(
+            'Find a colleague',
+            project,
+            '<form class="inlineform" id="lookup-person"><label class="formrow">Name<input required maxlength="100" name="query"></label><button class="btn" type="submit">Find people</button><div role="status"></div></form>',
+          );
+          const form = document.querySelector('#lookup-person');
+          form.onsubmit = async (event) => {
+            event.preventDefault();
+            const b = form.querySelector('button'),
+              out = form.querySelector('[role=status]');
+            b.disabled = true;
+            try {
+              const result = await read('people', { query: form.elements.query.value });
+              out.innerHTML =
+                result.people
+                  .map((u) => action('team-person-pick', u.name, 'subtle', 'user', u.id))
+                  .join('') || 'No assignable colleagues matched that name.';
+              for (const u of result.people) people.set(u.id, u.name);
+            } catch (error) {
+              out.textContent = error.message;
+            } finally {
+              b.disabled = false;
+            }
+          };
+        } else {
+          owner = e.target.value;
+          void run('tickets');
+        }
       };
   }
   async function run(task, more = false) {
@@ -203,12 +240,11 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
           return;
         }
       }
-      const data = await read('tickets', more ? { next } : {});
+      const data = await read('tickets', { owner, ...(more ? { next } : {}) });
       if (!current()) return;
       rows = [...new Map([...(more ? rows : []), ...data.items].map((r) => [r.key, r])).values()];
       next = data.next;
       loaded = true;
-      if (owner !== '*' && !rows.some((r) => (r.account || '') === owner)) owner = '*';
       paint();
     } catch (e) {
       if (!current()) return;
@@ -341,6 +377,11 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
       void run('sites');
     },
     handle: async (a, v) => {
+      if (a === 'team-person-pick') {
+        owner = v;
+        document.querySelector('#dialog').close();
+        return run('tickets');
+      }
       if (a === 'team-edit' || a === 'team-create') return edit(a === 'team-create' ? null : v);
       if (a === 'team-save') {
         await read('commit', { review: v });
