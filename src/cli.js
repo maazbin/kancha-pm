@@ -11,6 +11,7 @@ import { startServer } from './server.js';
 import { seedDemo } from './demo.js';
 import { sync } from './sources.js';
 import { mcpConfig } from './connections.js';
+import { getAdvicePacket, saveAdvice } from './advisor.js';
 
 const cli = fileURLToPath(import.meta.url);
 const root = path.dirname(path.dirname(cli));
@@ -66,6 +67,9 @@ async function setup() {
       : ['mcp', 'add', '--scope', 'user', 'kancha-pm', '--', tpl.command, ...tpl.args];
   execFileSync(target, reg, { stdio: 'inherit', windowsHide: true });
   await writeFile(skill, source, { mode: 0o600 });
+  const desk = openStore();
+  desk.set('advisor.engine', target);
+  desk.db.close();
   console.log(
     'Installed the skill and MCP server. Restart your agent and ask: Start my day with Kancha.',
   );
@@ -102,6 +106,23 @@ async function main() {
   const demo = cmd === 'demo' || args.includes('--demo');
   const store = openStore({ demo });
   if (demo) seedDemo(store);
+  if (cmd === 'advice-context' || cmd === 'save-advice') {
+    try {
+      if (cmd === 'advice-context')
+        console.log(JSON.stringify(await getAdvicePacket(store, '', args.slice(0, 4)), null, 2));
+      else {
+        let input = '';
+        for await (const chunk of process.stdin) {
+          input += chunk;
+          if (input.length > 24000) throw Error('Recommendation too large.');
+        }
+        console.log(JSON.stringify(saveAdvice(store, JSON.parse(input), 'session')));
+      }
+    } finally {
+      store.db.close();
+    }
+    return;
+  }
   if (cmd === 'mcp') return serveMcp(store);
   if (cmd === 'sync') {
     const b = await sync(store);

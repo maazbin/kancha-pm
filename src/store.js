@@ -294,7 +294,7 @@ export function openStore({ directory, demo = false } = {}) {
   }
   function board() {
     const visible = all().filter((i) => i.visible),
-      projectMap = projectIndex({ db }, visible);
+      projectMap = projectIndex({ db, config }, visible);
     const clock = Date.now(),
       items = visible.map((i) => ({
         ...i,

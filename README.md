@@ -101,6 +101,20 @@ Use **Get agent prompt** to test a Jira or Slack connection already available in
 
 ## Develop and verify
 
+### Connected workspace
+
+The coding agent prepares one next move with source evidence. In a coding session the Kancha skill checks for prior work when a developer starts a task, and delivers its recommendation in the conversation. The same recommendation appears first on the personal desk. **Use this next step** focuses a private action. **In an hour** snoozes the suggestion. Under **Workspace → PM reasoning** choose an existing signed-in Claude Code or Codex CLI for automatic background recommendations, or use the open coding session. CLI installation selects that engine during setup. The background worker rechecks when relevant evidence changes. A host-only session needs an active turn or a scheduled host wake-up.
+
+A connected Jira account populates **Projects**, **Focus desk** and **Analytics** automatically. Kancha reads the accessible board list and pages each board’s issues. The workload chart counts each site-qualified ticket once. Choose a board or click a ticket row to inspect its timeline. Personal assignments also enter the priority queue. Project mention checks start automatically and can be muted separately.
+
+The repository picker uses your GitHub connection, a working GitHub CLI login, or the inventory supplied by your coding agent. Agent-only inventories refresh during a coding session. A PR with a full Jira link appears on the matching ticket. Use **Repositories → select a repository → Link a ticket** for a relationship the source does not record. Linking changes only your local desk.
+
+### Find an existing handoff
+
+In **Team tickets**, choose a Jira project and enter a topic under **Before you start**. The search includes colleagues’ tickets in that project and across the projects you follow for mentions. Open a timeline for the original ticket creation, field changes and comments in chronological order. The current description is displayed separately. Times use the viewer’s local timezone. The sample desk has a worked example under **Review APP-24**.
+
+Choose **Follow mentions** for each project where you want reminders. The first check looks back 48 hours. Subsequent checks resume at the last successful scan with a five-minute overlap, including after the worker sleeps. The worker pages through updated tickets and new comments and matches structured mentions to your Jira account. This covers current ticket descriptions and newly created comments. Newly opened tickets appear quietly on the project screen. An incomplete scan shows a warning and retains its place for a retry. Unread reminders survive restarts until you review them or stop following. Only source references are saved for reminders. The timeline reads current Jira evidence on demand. Reviewing a reminder is private. Native alerts follow your desk’s quiet hours.
+
 ```sh
 npm ci --ignore-scripts
 npm test

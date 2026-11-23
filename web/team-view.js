@@ -7,7 +7,7 @@ const labels = {
   comment: 'Comment',
   create: 'New ticket',
 };
-export function teamView({ api, esc, action, header, panel, modal, notice, link }) {
+export function teamView({ api, esc, action, header, panel, modal, notice, link, desk, refresh }) {
   let site = '',
     project = '',
     owner = '*',
@@ -53,6 +53,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
   function paint() {
     const root = box();
     if (!root) return;
+    const draft = root.querySelector('#team-search input')?.value || '';
     for (const r of rows) people.set(r.account || '', r.owner || 'Unassigned');
     const view = rows.filter((r) => owner === '*' || (r.account || '') === owner);
     const active = view.filter((r) => !r.done);
@@ -64,6 +65,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
       ].join('-');
     const late = active.filter((r) => r.due && r.due < today);
     const unassigned = active.filter((r) => !r.account);
+    const followed = desk().handoffs.find((s) => s.site === site && s.project === project);
     root.innerHTML =
       '<div class="team-controls">' +
       select(
@@ -99,6 +101,52 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
         : !loaded
           ? '<p role="status">Loading tickets…</p>'
           : panel(
+              'Before you start',
+              '<form id="team-search" class="inlineform"><label class="formrow">What are you about to work on?<input name="topic" required minlength="2" maxlength="150" placeholder="Sandbox testing environment"></label><button class="btn primary">Find existing work</button><small>Search this project and the projects you follow for mentions.</small></form>',
+            ) +
+            panel(
+              'Your mentions',
+              (followed
+                ? '<p>Following ' +
+                  esc(project) +
+                  ' on this desk. ' +
+                  (followed.checked
+                    ? 'Last checked ' + esc(new Date(followed.checked).toLocaleString()) + '.'
+                    : 'Waiting for the first check.') +
+                  '</p>'
+                : '<p>Get a private reminder when a recent ticket description or comment mentions your Jira account.</p>') +
+                (followed?.note ? '<p role="status">' + esc(followed.note) + '</p>' : '') +
+                (followed?.unread || [])
+                  .map((a) =>
+                    action(
+                      'team-handoff',
+                      'Review ' + a.key,
+                      '',
+                      'at-sign',
+                      JSON.stringify([site, project, a.key, a.id, a.comment]),
+                    ),
+                  )
+                  .join('') +
+                '<div class="actions">' +
+                (followed ? action('team-check', 'Check mentions') : '') +
+                action(
+                  'team-follow',
+                  followed ? 'Stop following mentions' : 'Follow mentions',
+                  'subtle',
+                  'bell',
+                  followed ? 'off' : 'on',
+                ) +
+                '</div>',
+            ) +
+            (followed?.recent?.length
+              ? panel(
+                  'Opened in the last two days',
+                  followed.recent
+                    .map((r) => action('team-timeline', r.key, 'subtle', 'history', r.key))
+                    .join(''),
+                )
+              : '') +
+            panel(
               'Project at a glance',
               '<p class="team-insight"><strong>' +
                 active.length +
@@ -135,6 +183,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
                     esc(r.status) +
                     (r.due ? ' · Due ' + esc(r.due) : '') +
                     '</span></div>' +
+                    action('team-timeline', 'Timeline', 'subtle', 'history', r.key) +
                     action('team-edit', 'View ticket', 'subtle', 'arrow-up-right', r.key) +
                     '</article>',
                 )
@@ -145,6 +194,58 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
             (next ? action('team-more', 'Load more tickets') : '') +
             action('team-refresh', 'Refresh tickets', 'subtle', 'refresh-cw') +
             '</div>');
+    const search = root.querySelector('#team-search');
+    if (search) search.elements.topic.value = draft;
+    if (search)
+      search.onsubmit = async (e) => {
+        e.preventDefault();
+        const query = search.elements.topic.value.trim();
+        const scopes = [
+          { site, project },
+          ...desk().handoffs.filter((s) => s.site !== site || s.project !== project),
+        ];
+        modal('Existing work', query, '<p id="team-results" role="status">Searching projects…</p>');
+        const out = document.querySelector('#team-results');
+        const results = await Promise.allSettled(
+          scopes.map((s) => read('search', { site: s.site, project: s.project, query })),
+        );
+        if (!out.isConnected) return;
+        out.innerHTML = results
+          .map((result, i) => {
+            const scope = scopes[i],
+              siteName = sites.find((s) => s.id === scope.site)?.url;
+            const group =
+              '<strong>' +
+              esc(scope.project) +
+              (siteName ? ' · ' + esc(new URL(siteName).hostname) : '') +
+              '</strong>';
+            if (result.status === 'rejected')
+              return group + '<p>Search unavailable for this project.</p>';
+            return (
+              group +
+              (result.value.items
+                .map(
+                  (r) =>
+                    '<div class="historyrow"><div><strong>' +
+                    esc(r.summary) +
+                    '</strong><small>' +
+                    esc(r.key + ' · ' + (r.owner || 'Unassigned') + ' · ' + r.status) +
+                    '</small></div>' +
+                    action(
+                      'team-handoff',
+                      'Open timeline',
+                      'subtle',
+                      'history',
+                      JSON.stringify([scope.site, scope.project, r.key]),
+                    ) +
+                    '</div>',
+                )
+                .join('') || '<p>No matching tickets found.</p>') +
+              (result.value.partial ? '<small>Showing the first 40 matches.</small>' : '')
+            );
+          })
+          .join('<hr class="hr">');
+      };
     root.querySelector('#team-site').onchange = (e) => {
       site = e.target.value;
       project = '';
@@ -234,7 +335,7 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
           project = '';
           clear();
         }
-        if (!project && site === 'sample') project = projects[0]?.key || '';
+        if (!project) project = projects[0]?.key || '';
         if (!project) {
           paint();
           return;
@@ -377,6 +478,103 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link 
       void run('sites');
     },
     handle: async (a, v) => {
+      if (a === 'team-follow' || a === 'team-check') {
+        await read(
+          a === 'team-follow' ? 'follow' : 'check',
+          a === 'team-follow' ? { enabled: v === 'on' } : {},
+        );
+        await refresh(false);
+        paint();
+        return;
+      }
+      if (a === 'team-reviewed') {
+        const [site, project, id] = JSON.parse(v);
+        await read('acknowledge', { site, project, id });
+        document.querySelector('#dialog').close();
+        await refresh();
+        notice('Mention marked reviewed on your desk.');
+        return;
+      }
+      if (a === 'team-timeline' || a === 'team-handoff') {
+        const [s, p, key, id, comment] = a === 'team-timeline' ? [site, project, v] : JSON.parse(v);
+        modal(
+          'Ticket timeline',
+          key,
+          '<p id="timeline-loading" role="status">Reading the ticket history…</p>',
+        );
+        const pending = document.querySelector('#timeline-loading');
+        const h = await read('timeline', { site: s, project: p, key });
+        if (!pending.isConnected || !document.querySelector('#dialog').open) return;
+        const prs = desk().workspace.pulls.filter((p) => p.linkedIssues.includes(h.url));
+        modal(
+          h.summary,
+          h.key,
+          '<p>' +
+            esc(h.owner || 'Unassigned') +
+            ' · ' +
+            esc(h.status) +
+            '</p>' +
+            (prs.length
+              ? '<div class="trace-path"><strong>' +
+                esc(h.key) +
+                '</strong><span>→</span>' +
+                prs.map((p) => link(p.url, p.title)).join('') +
+                '</div>'
+              : '') +
+            (h.description?.text
+              ? '<details' +
+                (id?.endsWith(':description') ? ' open' : '') +
+                '><summary>Current ticket description</summary><p>' +
+                esc(h.description.text) +
+                '</p></details>'
+              : '') +
+            (comment && !h.events.some((e) => e.id === 'comment:' + comment)
+              ? '<p>The original mention is outside the history returned by Jira.</p>'
+              : '') +
+            h.notices.map((n) => '<p role="status">' + esc(n) + '</p>').join('') +
+            '<ol class="ticket-timeline">' +
+            h.events
+              .map(
+                (event) =>
+                  '<li' +
+                  (comment && event.id === 'comment:' + comment ? ' class="highlight"' : '') +
+                  '><small>' +
+                  esc(event.at ? new Date(event.at).toLocaleString() : 'Time unavailable') +
+                  '</small><strong>' +
+                  esc((event.actor || 'Author unavailable') + ' · ' + event.title) +
+                  '</strong>' +
+                  (event.body ? '<p>' + esc(event.body) + '</p>' : '') +
+                  (event.mentions?.length
+                    ? '<small>Mentioned ' +
+                      esc(event.mentions.map((m) => m.label).join(', ')) +
+                      '</small>'
+                    : '') +
+                  (event.edited
+                    ? '<small>Edited ' + esc(new Date(event.edited).toLocaleString()) + '</small>'
+                    : '') +
+                  (event.kind === 'comment' && event.url
+                    ? '<details class="source-ref"><summary>Source</summary>' +
+                      link(event.url, 'Open original comment') +
+                      '</details>'
+                    : '') +
+                  '</li>',
+              )
+              .join('') +
+            '</ol>' +
+            (h.url ? link(h.url, 'Open original ticket') : '') +
+            (id
+              ? action(
+                  'team-reviewed',
+                  'Mark reviewed on my desk',
+                  'primary',
+                  'check',
+                  JSON.stringify([s, p, id]),
+                )
+              : ''),
+        );
+        document.querySelector('.ticket-timeline .highlight')?.scrollIntoView({ block: 'nearest' });
+        return;
+      }
       if (a === 'team-person-pick') {
         owner = v;
         document.querySelector('#dialog').close();

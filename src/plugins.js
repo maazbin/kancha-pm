@@ -89,6 +89,16 @@ export function pluginStates(store) {
     Object.keys(urls).map((id) => [id, store.config('plugin.status.' + id, { connected: false })]),
   );
 }
+export async function githubAccountRead(store, path) {
+  if (!pluginStates(store).github.connected) throw Error('GitHub is disconnected.');
+  const response = await fetch('https://api.github.com/' + path, {
+    headers: { Authorization: secret(store, 'github').header, Accept: 'application/vnd.github+json' },
+    redirect: 'error',
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw Error('GitHub inventory unavailable.');
+  return response.json();
+}
 function status(store, id, data) {
   store.set('plugin.status.' + id, { ...data, checked: new Date().toISOString() });
 }
@@ -170,7 +180,11 @@ async function connected(store, id, credential, operation, flow, save) {
   } catch (e) {
     if (flow?.url) return { authorize: flow.url };
     if (e.code === 401 || e.name === 'UnauthorizedError' || /\b401\b|sign in again/i.test(e.message)) {
-      if (!flow && !save.staged) status(store, id, { connected: false, needsSignIn: true });
+      if (!flow && !save.staged) {
+        status(store, id, { connected: false, needsSignIn: true });
+        if (id === 'jira')
+          for (const i of store.all()) if (i.visible && i.source === 'jira-plugin') store.forget(i);
+      }
       throw Error('Sign in again from Plugins to continue.');
     }
     if (/\b403\b|forbidden/i.test(e.message))
@@ -223,6 +237,8 @@ async function verify(client, id) {
 function install(store, id, cred, verified) {
   delete cred.verifier;
   store.tx(() => {
+    if (id === 'jira')
+      for (const i of store.all()) if (i.visible && i.source === 'jira-plugin') store.forget(i);
     secret(store, id, cred);
     store.set('plugin.version.' + id, randomBytes(12).toString('hex'));
     status(store, id, { connected: true, ...verified });
@@ -239,6 +255,9 @@ export async function pluginAction(store, { id, action, token, email, clientId, 
   if (action === 'disconnect') {
     cleanFlows(store, id);
     store.tx(() => {
+      if (id === 'jira')
+        for (const i of store.all()) if (i.visible && i.source === 'jira-plugin') store.forget(i);
+      if (id === 'jira' || id === 'github') store.set('workspace.' + id, {});
       secret(store, id, null);
       store.set('plugin.version.' + id, '');
       status(store, id, { connected: false });

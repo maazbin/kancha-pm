@@ -9,6 +9,9 @@ import { checkGithubCli, hostProbeFields, saveCheck } from './connections.js';
 import { day } from './analysis.js';
 import { pluginRead } from './plugins.js';
 import { teamAction } from './team.js';
+import { handoffDesk } from './handoffs.js';
+import { workspaceSnapshot } from './workspace-state.js';
+import { getAdvicePacket, advisorState, saveAdvice, adviceFields } from './advisor.js';
 import { waitingChat, replyChat } from './chat.js';
 import {
   catalog,
@@ -57,6 +60,21 @@ async function checkoutContext(dir) {
 export function commands(store) {
   const map = [
     arg(
+      'get_pm_context',
+      'Start a work session or preflight a topic. Return personally relevant signals, related work and source timelines for this coding agent to reason about.',
+      {
+        topic: z.string().trim().max(180).default(''),
+        keys: z.array(z.string().max(90)).max(4).default([]),
+      },
+      (a) => getAdvicePacket(store, a.topic, a.keys),
+    ),
+    arg(
+      'save_pm_advice',
+      'Publish one recommendation from this coding session with exact evidence IDs. Topic-specific advice is returned directly to this chat.',
+      { ...adviceFields, topic: z.string().trim().max(180).default('') },
+      (a) => saveAdvice(store, a, 'session', a.topic),
+    ),
+    arg(
       'read_plugin',
       'List available read tools or read GitHub or Slack using the dashboard plugin connection.',
       {
@@ -68,9 +86,18 @@ export function commands(store) {
     ),
     arg(
       'read_team_tickets',
-      'Read sites, projects or a page of shared Jira tickets through the developer’s authorized plugin.',
+      'Find existing work by topic in a selected project before starting, read an evidence timeline, or check your local mention inbox.',
       {
-        action: z.enum(['sites', 'projects', 'tickets', 'details', 'people']),
+        action: z.enum([
+          'sites',
+          'projects',
+          'tickets',
+          'details',
+          'people',
+          'search',
+          'timeline',
+          'inbox',
+        ]),
         owner: z.string().optional(),
         query: z.string().optional(),
         site: z.string().optional(),
@@ -112,7 +139,30 @@ export function commands(store) {
       'project_scope',
       'Inspect this developer’s followed boards, repository hints and verified checkout origins before discovering work.',
       {},
-      () => catalog(store),
+      () => ({ ...catalog(store), workspace: workspaceSnapshot(store) }),
+    ),
+    arg(
+      'record_github_inventory',
+      'Save the visible repositories and relevant open PRs already read by this coding host, for the local workspace and trace views.',
+      {
+        host: text(120),
+        repos: z.array(repoInput).max(20000),
+        partial: z.boolean(),
+        pulls: z
+          .array(
+            z.object({
+              url: z.string().refine((v) => !!pull(v)),
+              title: text(300),
+              updated: z.string().datetime({ offset: true }),
+              linkedIssues: z.array(z.string().refine((v) => !!jiraIssue(v))).max(100),
+            }),
+          )
+          .max(2000),
+      },
+      (a) => {
+        store.set('workspace.githubHost', { ...a, route: 'agent', checked: now() });
+        return { repositories: a.repos.length, pulls: a.pulls.length };
+      },
     ),
     arg(
       'follow_repo',
@@ -189,6 +239,10 @@ export function commands(store) {
         );
         return {
           agenda: ids,
+          recommendation: advisorState(store).brief,
+          mentions: handoffDesk(store).flatMap((s) =>
+            s.unread.map((a) => ({ ...a, site: s.site, project: s.project })),
+          ),
           availableCount: b.agenda.length,
           items: ids.map((k) => {
             const { id, title, why, project, kind, stage, url } = store.get(k);

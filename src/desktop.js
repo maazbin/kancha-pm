@@ -2,12 +2,26 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { markers, quiet } from './engine.js';
+import { handoffDesk } from './handoffs.js';
+import { advisorState } from './advisor.js';
 const run = promisify(execFile);
 const script = fileURLToPath(new URL('../scripts/notify.ps1', import.meta.url));
 export async function deliver(store) {
   const b = store.board();
   if (quiet(b.settings)) return;
-  for (const m of markers(b)) {
+  const mentions = handoffDesk(store).flatMap((scope) =>
+    scope.unread.map((a) => ({
+      key: JSON.stringify(['mention', store.config('plugin.version.jira', ''), scope.site, a.id]),
+      label: 'Jira mention',
+      title: 'You were mentioned on ' + a.key + '. Open Team tickets to review.',
+    })),
+  );
+  const advisor = advisorState(store);
+  const recommendation =
+    advisor.brief && !advisor.accepted
+      ? [{ key: 'pm:' + advisor.brief.revision, label: 'Your next move', title: advisor.brief.next }]
+      : [];
+  for (const m of [...recommendation, ...markers(b), ...mentions]) {
     const key = 'notice:' + m.key,
       lease = store.acquire(key, 60000);
     if (!lease) continue;

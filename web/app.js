@@ -2,6 +2,7 @@ import { projectViews } from './project-views.js';
 import { setupDialog, download, probePrompt } from './connections.js';
 import { pluginScreen, pluginDialog } from './plugin-cards.js';
 import { teamView } from './team-view.js';
+import { workspaceView } from './workspace.js';
 import { workViews, chatController, chatView } from './work-views.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
@@ -96,9 +97,17 @@ async function refresh(paint = true) {
   const version = ++revision,
     fresh = await api('board');
   if (version !== revision) return;
-  const keys = new Set(fresh.markers.map((m) => m.key));
+  const mentions = fresh.handoffs.flatMap((s) =>
+    s.unread.map((a) => ({
+      key: JSON.stringify([s.site, a.id]),
+      label: 'You were mentioned',
+      title: a.key,
+    })),
+  );
+  const alerts = [...mentions, ...fresh.markers],
+    keys = new Set(alerts.map((m) => m.key));
   if (oldMarkers && !fresh.quiet) {
-    const m = fresh.markers.find((m) => !oldMarkers.has(m.key));
+    const m = alerts.find((m) => !oldMarkers.has(m.key));
     if (m) notice(m.label + ' · ' + m.title);
   }
   oldMarkers = keys;
@@ -120,6 +129,52 @@ function tile(i, showStatus = true) {
 const panel = (title, contents, side = '') =>
   `<section class="panel"><div class="sectionhead"><h2>${esc(title)}</h2>${side}</div>${contents}</section>`;
 function desk() {
+  const advisor = board.advisor,
+    brief = advisor.brief;
+  if (brief) {
+    const evidence = brief.sources
+      .map((s) =>
+        s.site && s.key
+          ? action(
+              'team-handoff',
+              s.key + (s.comment ? ' · comment' : ''),
+              '',
+              'history',
+              JSON.stringify([s.site, s.project, s.key, null, s.comment]),
+            )
+          : /^https:\/\//.test(s.id)
+            ? link(s.id, s.title)
+            : action('brief', s.title, '', 'list-checks', s.id),
+      )
+      .join('');
+    return (
+      header('Focus desk', '', action('chat', 'Ask your PM', '', 'messages-square')) +
+      '<section class="hero pm-lead"><small>Coding agent · ' +
+      esc(date(brief.created)) +
+      '</small><h2>' +
+      esc(brief.next) +
+      '</h2><p>' +
+      esc(brief.why) +
+      '</p><div class="actions">' +
+      (advisor.accepted
+        ? action('brief', 'Open my next step', 'lime', 'arrow-right', advisor.accepted)
+        : action('pm-accept', 'Use this next step', 'lime', 'check', brief.revision) +
+          action('pm-later', 'In an hour', '', 'clock', brief.revision)) +
+      '</div></section>' +
+      panel('Evidence', '<div class="actions">' + evidence + '</div>') +
+      (board.agenda.length
+        ? '<details class="panel source-drawer"><summary>Other work</summary>' +
+          board.agenda
+            .slice(0, 5)
+            .map((id) => tile(item(id)))
+            .join('') +
+          '</details>'
+        : '')
+    );
+  }
+  const mentions = board.handoffs.flatMap((s) =>
+    s.unread.map((a) => ({ ...a, site: s.site, project: s.project })),
+  );
   const focus = item(board.agenda[0]),
     others = board.agenda.slice(1, 4).map(item),
     watches = watched().sort((a, b) => (b.watch.status === 'reply') - (a.watch.status === 'reply'));
@@ -135,6 +190,29 @@ function desk() {
       `Your next move${board.settings.name === 'Developer' ? '' : ', ' + board.settings.name}.`,
       action('capture', 'Capture work', '', 'plus'),
     ) +
+    (mentions.length
+      ? panel(
+          'Mentions to review',
+          mentions
+            .map((a) =>
+              action(
+                'team-handoff',
+                'Review ' + a.key,
+                '',
+                'at-sign',
+                JSON.stringify([a.site, a.project, a.key, a.id, a.comment]),
+              ),
+            )
+            .join(''),
+        )
+      : '') +
+    (advisor.status === 'reading'
+      ? '<div class="bulletin" role="status">Your coding agent is checking the latest handoffs.</div>'
+      : advisor.paused
+        ? '<div class="bulletin">PM recommendation snoozed for one hour.</div>'
+        : advisor.status && advisor.status !== 'ready'
+          ? '<div class="bulletin">' + esc(advisor.status) + '</div>'
+          : '') +
     (issues.length
       ? `<div class="bulletin">${icon('circle-alert')}<span>${issues.length} source connection${issues.length === 1 ? ' needs' : 's need'} attention.</span>${action('settings', 'Inspect', 'subtle')}</div>`
       : '') +
@@ -231,24 +309,71 @@ function settings() {
   return (
     header('Workspace', 'Choose what your PM follows on this device.') +
     panel(
+      'PM reasoning',
+      '<p>' +
+        esc(
+          {
+            session: 'Your open coding session prepares recommendations.',
+            codex: 'Codex CLI checks for a new recommendation as work changes.',
+            claude: 'Claude Code checks for a new recommendation as work changes.',
+          }[board.advisor.engine],
+        ) +
+        '</p><div class="actions">' +
+        Object.entries({
+          session: 'Open coding session',
+          codex: 'Codex on this worker',
+          claude: 'Claude Code on this worker',
+        })
+          .filter(([k]) => k !== board.advisor.engine)
+          .map(([k, label]) => action('pm-engine', label, '', 'cpu', k))
+          .join('') +
+        '</div>',
+    ) +
+    panel(
       'Plugins',
       '<p>Set up MCP, reuse your existing sign-ins and see verified access.</p>',
       action('connections', 'Open plugins', 'subtle'),
     ) +
-    `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
+    `<form data-form="settings" class="stack">${panel('Personal desk', `<div class="settingsgrid">${field('Your name', 'name', s.name, { required: true, max: 80 })}${field('Local checkout', 'checkout', s.checkout, { hint: 'Absolute path to the repo used for handoffs.' })}</div>`)}<details class="panel"><summary>Advanced source settings</summary>${panel('Optional background connectors', `<div class="settingsgrid">${field('GitHub repositories', 'repos', s.repos.join(', '), { wide: true, hint: 'Comma-separated owner/repository pairs. Uses your gh login.' })}${field('Jira Cloud site', 'jiraSite', s.jiraSite, { hint: 'Example: https://team.atlassian.net' })}${field('Jira project keys', 'projects', s.projects.join(', '), { hint: 'Comma-separated keys. The helper uses KANCHA_JIRA_EMAIL and KANCHA_JIRA_TOKEN.' })}</div><div class="sourcelist">${syncs.map(([k, v]) => `<div class="historyrow"><div><b>${esc(k)}</b><small>${esc(v.status)} · ${v.lastSuccess ? 'Last success ' + date(v.lastSuccess) : 'No successful check yet'}${v.error ? ' · ' + esc(v.error) : ''}</small></div></div>`).join('')}</div>`)}</details>${panel('Reminders', `<div class="settingsgrid">${field('Quiet from (local hour)', 'quietStart', s.quietStart, { type: 'number', min: 0, max: 23, required: true })}${field('Quiet until (local hour)', 'quietEnd', s.quietEnd, { type: 'number', min: 0, max: 23, required: true })}${field('Check interval in minutes', 'interval', s.interval, { type: 'number', min: 2, max: 120, required: true })}</div>`)}<div class="actions">${submit('Save workspace')}${action('sync', 'Check sources now', '', 'refresh-cw')}</div></form>`
   );
 }
 let priorityScope = '';
+const workspaceState = { board: '', limit: 15, repoQuery: '' };
+const workspaceSection = (mode) =>
+  workspaceView({ board, esc, action, panel, header, state: workspaceState, mode });
 const chat = chatController({ api, esc, action, date });
-const team = teamView({ api, esc, action, header, panel, modal, notice, link });
+const team = teamView({
+  api,
+  esc,
+  action,
+  header,
+  panel,
+  modal,
+  notice,
+  link,
+  desk: () => board,
+  refresh,
+});
 setInterval(() => {
   if (!document.hidden && page === 'chat') void chat.poll();
 }, 2500);
 document.addEventListener('change', (e) => {
+  if (e.target.id === 'workspace-scope') {
+    workspaceState.board = e.target.value;
+    workspaceState.limit = 15;
+    render();
+    return;
+  }
   if (e.target.id === 'priority-scope') {
     priorityScope = e.target.value;
     render();
   }
+});
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'ws-repo-search') return;
+  workspaceState.repoQuery = e.target.value.toLowerCase();
+  for (const b of document.querySelectorAll('.repo-chip'))
+    b.hidden = !b.dataset.value.toLowerCase().includes(workspaceState.repoQuery);
 });
 function render() {
   if (!board) return;
@@ -286,6 +411,18 @@ function render() {
     team: team.screen,
     ...projectViews({ board, header, panel, action, esc, empty, tile }),
   }[page]();
+  if (page === 'projects' && (board.workspace.jiraConnected || board.workspace.repos.length)) {
+    main.innerHTML = workspaceSection('projects');
+  }
+  if (page === 'analytics' && board.workspace.sites.length) {
+    main.querySelector('.head')?.remove();
+    main.innerHTML =
+      header('Analytics', 'Current workload across connected boards.') +
+      workspaceSection('analytics') +
+      '<details class="panel source-drawer"><summary>Personal activity</summary>' +
+      main.innerHTML +
+      '</details>';
+  }
   document.title = navs[page][0] + ' · Kancha';
   if (page === 'chat') chat.bind();
   if (page === 'team') team.bind();
@@ -479,6 +616,114 @@ async function show(id) {
   openBrief(b.item, b.checkout);
 }
 async function handle(a, v) {
+  if (a === 'pm-accept' || a === 'pm-later') {
+    await api('advisor', { action: a === 'pm-accept' ? 'accept' : 'later', revision: v });
+    await refresh();
+    notice(a === 'pm-accept' ? 'Saved as your private next step.' : 'Snoozed for one hour.');
+    return;
+  }
+  if (a === 'pm-engine') {
+    await api('advisor', { engine: v });
+    await refresh();
+    notice('Coding engine saved.');
+    return;
+  }
+  if (a === 'ws-board' || a === 'ws-more') {
+    if (a === 'ws-board') {
+      workspaceState.board = workspaceState.board === v ? '' : v;
+      workspaceState.limit = 15;
+    } else workspaceState.limit += 20;
+    render();
+    return;
+  }
+  if (a === 'ws-repo') {
+    const prs = board.workspace.pulls.filter((p) =>
+      new URL(p.url).pathname.toLowerCase().startsWith('/' + v.toLowerCase() + '/pull/'),
+    );
+    modal(
+      v,
+      'Repository',
+      prs.length
+        ? prs
+            .map(
+              (p) =>
+                '<div class="block"><strong>' +
+                esc(p.title) +
+                '</strong><div>' +
+                p.linkedIssues
+                  .map((u) => {
+                    const match = board.workspace.sites.find(
+                        (s) => new URL(s.url).origin === new URL(u).origin,
+                      ),
+                      key = new URL(u).pathname.split('/').pop(),
+                      t = match?.tickets.find((t) => t.key === key);
+                    return t
+                      ? action(
+                          'team-handoff',
+                          t.key,
+                          'subtle',
+                          'history',
+                          JSON.stringify([t.site, t.project, t.key]),
+                        )
+                      : '';
+                  })
+                  .join('') +
+                link(p.url, 'Open PR') +
+                action('ws-pair', 'Link a ticket', 'subtle', 'git-merge', p.url) +
+                '</div></div>',
+            )
+            .join('')
+        : '<p>No open pull requests involving you in the last discovery.</p>',
+    );
+    return;
+  }
+  if (a === 'ws-pair') {
+    const pr = board.workspace.pulls.find((p) => p.url === v);
+    if (!pr) return;
+    modal(
+      'Link a ticket',
+      pr.title,
+      '<label class="formrow">Find by ticket or title<input id="pair-search" placeholder="Sandbox or ticket number"></label><div id="pair-results"></div>',
+    );
+    const input = $('#pair-search'),
+      results = $('#pair-results');
+    function candidates() {
+      const q = input.value.toLowerCase().trim(),
+        rows = board.workspace.sites.flatMap((s) =>
+          s.tickets.map((t) => ({ ...t, url: new URL('/browse/' + t.key, s.url).href })),
+        );
+      const rank = (t) => (pr.title.toLowerCase().includes(t.key.toLowerCase()) ? 1 : 0);
+      results.innerHTML =
+        rows
+          .filter(
+            (t) => (t.key + ' ' + t.title).toLowerCase().includes(q) && !pr.linkedIssues.includes(t.url),
+          )
+          .sort(
+            (a, b) => rank(b) - rank(a) || (Date.parse(b.updated) || 0) - (Date.parse(a.updated) || 0),
+          )
+          .slice(0, 12)
+          .map(
+            (t) =>
+              '<div class="historyrow"><div><small>' +
+              esc(t.key + ' · ' + new URL(t.url).hostname) +
+              '</small><strong>' +
+              esc(t.title) +
+              '</strong></div>' +
+              action('ws-confirm', 'Link', 'subtle', 'git-merge', JSON.stringify([v, t.url])) +
+              '</div>',
+          )
+          .join('') || '<p class="empty">No matching tickets.</p>';
+    }
+    input.oninput = candidates;
+    candidates();
+    input.focus();
+    return;
+  }
+  if (a === 'ws-confirm') {
+    const [prUrl, issueUrl] = JSON.parse(v);
+    await op('confirm_pr_issue', { prUrl, issueUrl, enabled: true }, 'Linked on your desk.');
+    return handle('ws-repo', new URL(prUrl).pathname.split('/').slice(1, 3).join('/'));
+  }
   if (a.startsWith('team-')) return team.handle(a, v);
   if (a === 'plugin-manage')
     return pluginDialog({ id: v, board, modal, esc, action, api, refresh, notice });
@@ -818,7 +1063,15 @@ dialog.addEventListener('click', (e) => {
   }
 });
 async function tick() {
-  if (document.hidden || dialog.open || ['settings', 'chat', 'team'].includes(page) || saving) return;
+  if (
+    document.hidden ||
+    dialog.open ||
+    ['settings', 'chat', 'team'].includes(page) ||
+    document.activeElement?.id === 'ws-repo-search' ||
+    document.querySelector('#repo-drawer[open]') ||
+    saving
+  )
+    return;
   try {
     await refresh();
   } catch {

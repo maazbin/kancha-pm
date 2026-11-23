@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { z } from 'zod';
+import { workspaceSnapshot } from './workspace-state.js';
 
 const run = promisify(execFile);
 const issuePattern = /^[A-Z][A-Z0-9_]*-[1-9]\d*$/;
@@ -52,11 +53,30 @@ export function projectTables(db) {
  CREATE TABLE IF NOT EXISTS associations(pr TEXT,issue TEXT,PRIMARY KEY(pr,issue));`);
 }
 export function catalog(store) {
+  const inventory = workspaceSnapshot(store),
+    discovered = inventory.sites.flatMap((s) =>
+      s.boards.map((b) => ({
+        id: b.id,
+        name: b.name,
+        url: b.url,
+        site: new URL(s.url).origin,
+        repos: [],
+        checked: b.partial ? null : inventory.checked,
+        discovered: true,
+      })),
+    );
   return {
-    boards: store.db
-      .prepare('SELECT * FROM boards ORDER BY name,id')
-      .all()
-      .map((b) => ({ ...b, repos: JSON.parse(b.repos) })),
+    boards: [
+      ...new Map(
+        [
+          ...store.db
+            .prepare('SELECT * FROM boards ORDER BY name,id')
+            .all()
+            .map((b) => ({ ...b, repos: JSON.parse(b.repos) })),
+          ...discovered,
+        ].map((b) => [b.id, b]),
+      ).values(),
+    ],
     checkouts: store.db.prepare('SELECT * FROM checkouts ORDER BY repo,path').all(),
     repositories: store.db
       .prepare('SELECT repo FROM followed_repos ORDER BY repo')
@@ -156,6 +176,10 @@ export function projectIndex(store, visible = []) {
   const byIssue = new Map(),
     byKey = new Map(),
     boards = new Map(cfg.boards.map((b) => [b.id, b]));
+  for (const s of workspaceSnapshot(store).sites)
+    for (const b of s.boards)
+      for (const key of b.keys)
+        members.push({ board: b.id, issue: new URL('/browse/' + key, s.url).href });
   for (const m of members) {
     if (!byIssue.has(m.issue)) byIssue.set(m.issue, []);
     byIssue.get(m.issue).push(m.board);
@@ -169,6 +193,11 @@ export function projectIndex(store, visible = []) {
     byPR.get(l.pr).push(l.issue);
   }
   const pullsForIssue = new Map();
+  for (const p of workspaceSnapshot(store).pulls)
+    for (const url of p.linkedIssues) {
+      if (!pullsForIssue.has(url)) pullsForIssue.set(url, new Set());
+      pullsForIssue.get(url).add(p.url);
+    }
   for (const item of visible) {
     const p = pull(item.url);
     if (!p) continue;

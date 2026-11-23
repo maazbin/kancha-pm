@@ -12,6 +12,10 @@ import { mcpConfig } from './connections.js';
 import { chatHistory, submitChat } from './chat.js';
 import { pluginStates, pluginAction, finishPlugin } from './plugins.js';
 import { teamAction } from './team.js';
+import { handoffDesk, scanHandoffs } from './handoffs.js';
+import { discoverJira, discoverGithub } from './discovery.js';
+import { workspaceSnapshot } from './workspace-state.js';
+import { advisorState, runAdvisor, actOnAdvice } from './advisor.js';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const assets = {
   '/': 'index.html',
@@ -19,9 +23,11 @@ const assets = {
   '/project-views.js': 'project-views.js',
   '/connections.js': 'connections.js',
   '/team-view.js': 'team-view.js',
+  '/workspace.js': 'workspace.js',
   '/plugin-cards.js': 'plugin-cards.js',
   '/work-views.js': 'work-views.js',
   '/style.css': 'style.css',
+  '/workspace.css': 'workspace.css',
   '/mark.svg': 'mark.svg',
 };
 const fonts = {
@@ -40,6 +46,15 @@ export async function startServer(store, { port = 4317, background = true, nativ
   const map = commands(store),
     cookie = randomBytes(24).toString('hex');
   let tick, sample;
+  let discovering;
+  function discover() {
+    if (store.demo) return Promise.resolve();
+    if (!discovering)
+      discovering = Promise.allSettled([discoverJira(store), discoverGithub(store)]).finally(() => {
+        discovering = null;
+      });
+    return discovering;
+  }
   const server = http.createServer(async (req, res) => {
     const port = server.address().port;
     const host = req.headers.host;
@@ -70,8 +85,9 @@ export async function startServer(store, { port = 4317, background = true, nativ
             req.headers.cookie || '',
             'http://' + host,
           );
+          void discover();
           res.writeHead(303, {
-            Location: '/#connections',
+            Location: '/#projects',
             'Set-Cookie': 'kancha_oauth=; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=0',
           });
           return res.end();
@@ -139,6 +155,10 @@ export async function startServer(store, { port = 4317, background = true, nativ
           ...b,
           plugins: pluginStates(activeStore),
           markers: markers(b),
+          handoffs: handoffDesk(activeStore),
+          advisor: advisorState(activeStore),
+          workspace: workspaceSnapshot(activeStore),
+          discovering: !!discovering,
           quiet: quiet(b.settings),
           standaloneDemo: store.demo,
         };
@@ -148,9 +168,14 @@ export async function startServer(store, { port = 4317, background = true, nativ
         result = chatHistory(activeStore);
       } else if (
         req.method === 'POST' &&
-        ['/api/action', '/api/chat', '/api/chat/cancel', '/api/plugins', '/api/team'].includes(
-          url.pathname,
-        )
+        [
+          '/api/action',
+          '/api/chat',
+          '/api/chat/cancel',
+          '/api/plugins',
+          '/api/team',
+          '/api/advisor',
+        ].includes(url.pathname)
       ) {
         if (!req.headers['content-type']?.startsWith('application/json'))
           return fail(415, 'Expected JSON');
@@ -162,8 +187,20 @@ export async function startServer(store, { port = 4317, background = true, nativ
           chunks.push(chunk);
         }
         const payload = JSON.parse(Buffer.concat(chunks).toString());
-        if (url.pathname === '/api/plugins') {
+        if (url.pathname === '/api/advisor') {
+          if (['accept', 'later'].includes(payload.action)) {
+            result = actOnAdvice(activeStore, payload.revision, payload.action);
+          } else {
+            if (!['session', 'claude', 'codex'].includes(payload.engine))
+              throw Error('Select a coding engine.');
+            activeStore.set('advisor.engine', payload.engine);
+            activeStore.set('advisor.status', '');
+            void runAdvisor(activeStore);
+            result = { engine: payload.engine };
+          }
+        } else if (url.pathname === '/api/plugins') {
           result = await pluginAction(activeStore, payload, 'http://' + host);
+          if (result.connected && !activeStore.demo) void discover();
           if (result.state) {
             res.setHeader(
               'Set-Cookie',
@@ -179,9 +216,12 @@ export async function startServer(store, { port = 4317, background = true, nativ
               .prepare("UPDATE chat SET status='cancelled' WHERE id=? AND status='waiting'")
               .run(payload.id).changes,
           };
-        else if (['read_browser_chat', 'reply_browser_chat'].includes(payload.name))
+        else if (['read_browser_chat', 'reply_browser_chat', 'save_pm_advice'].includes(payload.name))
           return fail(403, 'Use the coding session’s Kancha MCP connection for agent replies.');
-        else result = await invoke(activeMap, payload.name, payload.args || {});
+        else {
+          if (payload.name === 'sync_sources' && !activeStore.demo) await discover();
+          result = await invoke(activeMap, payload.name, payload.args || {});
+        }
       } else return fail(404, 'Route unavailable');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify(result));
@@ -196,7 +236,9 @@ export async function startServer(store, { port = 4317, background = true, nativ
   let stopped = false;
   async function poll() {
     try {
-      await sync(store);
+      await Promise.allSettled([sync(store), discover()]);
+      await scanHandoffs(store);
+      await runAdvisor(store);
       if (native) await deliver(store);
     } catch (e) {
       console.error('Kancha sync:', e.message);

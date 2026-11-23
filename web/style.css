@@ -1202,3 +1202,35 @@ summary {
 #chat-form {
   margin-top: 1rem;
 }
+.ticket-timeline {
+  list-style: none;
+  padding: 0 0 0 1rem;
+  margin: 1.5rem 0;
+}
+.ticket-timeline li {
+  position: relative;
+  border-left: 2px solid #a5b3a5;
+  padding: 0 0 1.2rem 1.2rem;
+  overflow-wrap: anywhere;
+}
+.ticket-timeline li::before {
+  content: '';
+  position: absolute;
+  top: 0.3rem;
+  left: -0.36rem;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: #668b66;
+}
+.ticket-timeline strong,
+.ticket-timeline small {
+  display: block;
+}
+.ticket-timeline p {
+  margin: 0.35rem 0;
+  white-space: pre-line;
+}
+.ticket-timeline .highlight {
+  border-color: #568264;
+}

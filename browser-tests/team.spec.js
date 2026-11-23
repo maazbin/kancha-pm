@@ -1,4 +1,27 @@
 import { test, expect } from './fixture.js';
+test('Maz can trace a mention, clear it privately, and find the same sandbox before starting', async ({
+  page,
+}) => {
+  await page.goto('/sample/#desk');
+  await page.getByRole('button', { name: 'Review APP-24' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Iman · Created the ticket');
+  await expect(dialog.locator('.highlight')).toContainText(
+    'The test worker still fails its startup check.',
+  );
+  await page.getByRole('button', { name: 'Mark reviewed on my desk' }).click();
+  await expect(page.getByRole('button', { name: 'Review APP-24' })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Review APP-24' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Team tickets', exact: true }).click();
+  await page.getByRole('button', { name: 'Check mentions' }).click();
+  await expect(page.getByRole('button', { name: 'Review APP-24' })).toHaveCount(0);
+  await page.getByLabel('What are you about to work on?').fill('sandbox');
+  await page.getByRole('button', { name: 'Find existing work' }).click();
+  await expect(dialog).toContainText('APP-24 · Iman · In progress');
+  await page.getByRole('button', { name: 'Open timeline' }).click();
+  await expect(dialog).toContainText('Mentioned @Maz');
+});
 test('a teammate finds another owner and reviews a ticket change without affecting the personal queue', async ({
   page,
 }) => {

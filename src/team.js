@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { callTool, pluginStates, withPlugin } from './plugins.js';
+import { sampleHistory, ticketHistory } from './ticket-history.js';
+import { setFollow, handoffDesk, acknowledge, scanHandoffs } from './handoffs.js';
 
 const fields = ['summary', 'assignee', 'status', 'priority', 'updated', 'duedate'];
 const staged = new WeakMap();
@@ -17,6 +19,7 @@ const seed = [
   ['APP-17', 'Confirm the checkout retry rule', 'Nadia', 'In progress', 'High'],
   ['APP-19', 'Review the receipt copy', 'Maz', 'In review', 'Medium'],
   ['APP-22', 'Prepare the release checklist', '', 'To do', 'Medium'],
+  ['APP-24', 'Bring up the sandbox testing environment', 'Iman', 'In progress', 'High'],
 ].map(([key, summary, owner, status, priority]) => ({
   key,
   summary,
@@ -69,7 +72,9 @@ function validateEdit(data, options) {
     throw Error('Choose an available Jira option.');
 }
 function sample(store) {
-  return store.config('team.demo', seed);
+  const rows = store.config('team.demo', structuredClone(seed));
+  if (!rows.some((r) => r.key === 'APP-24')) rows.push({ ...seed[3] });
+  return rows;
 }
 async function access(store, fn) {
   return withPlugin(store, 'jira', (c) => fn((name, args) => callTool(c, name, args)));
@@ -97,6 +102,7 @@ function previewMap(store) {
   return staged.get(store);
 }
 export async function teamAction(store, p) {
+  if (p.action === 'inbox') return { scopes: handoffDesk(store) };
   const sites = store.demo ? [exampleSite] : pluginStates(store).jira.sites || [];
   if (p.action === 'sites')
     return { sites: store.demo || pluginStates(store).jira.connected ? sites : [] };
@@ -123,6 +129,55 @@ export async function teamAction(store, p) {
     });
   }
   const project = projectKey.parse(p.project);
+  if (store.demo && project !== 'APP') throw Error('Choose the sample project.');
+  if (p.action === 'follow' || p.action === 'check' || p.action === 'acknowledge') {
+    if (p.action === 'follow') setFollow(store, site.id, project, z.boolean().parse(p.enabled));
+    if (p.action === 'acknowledge')
+      acknowledge(store, site.id, project, z.string().max(200).parse(p.id));
+    if (p.action === 'check' || (p.action === 'follow' && p.enabled))
+      await scanHandoffs(store, { site: site.id, project });
+    return { scopes: handoffDesk(store) };
+  }
+  if (p.action === 'timeline') {
+    const key = issueKey.parse(p.key);
+    if (!key.startsWith(project + '-')) throw Error('Choose a ticket from this project.');
+    if (!store.demo) return access(store, (read) => ticketHistory(read, site, key));
+    const row = sample(store).find((r) => r.key === key);
+    if (!row) throw Error('Ticket unavailable.');
+    return sampleHistory(row);
+  }
+  if (p.action === 'search') {
+    const query = z.string().trim().min(2).max(150).parse(p.query);
+    const terms = [
+      ...new Set((query.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter((t) => t.length > 1)),
+    ].slice(0, 6);
+    if (!terms.length) throw Error('Enter a word from the work or a ticket key.');
+    if (store.demo)
+      return {
+        items: sample(store).filter(
+          (r) =>
+            r.key.toLowerCase() === query.toLowerCase() ||
+            terms.some((t) => r.summary.toLowerCase().includes(t)),
+        ),
+        partial: false,
+      };
+    const match = issueKey.safeParse(query.toUpperCase()).success
+      ? 'key = "' + query.toUpperCase() + '"'
+      : terms.map((t) => 'text ~ "' + t + '"').join(' OR ');
+    return access(store, async (read) => {
+      const data = await read('searchJiraIssuesUsingJql', {
+        cloudId: site.id,
+        jql: 'project = "' + project + '" AND (' + match + ') ORDER BY updated DESC',
+        fields,
+        view: 'full',
+        maxResults: 40,
+      });
+      return {
+        items: (data.issues || []).map(issue),
+        partial: !!data.nextPageToken || data.isLast === false,
+      };
+    });
+  }
   if (p.action === 'people') {
     const query = z.string().trim().min(1).max(100).parse(p.query);
     if (store.demo)
@@ -187,6 +242,8 @@ export async function teamAction(store, p) {
             ...seed[2],
             key: 'APP-' + (Math.max(...rows.map((i) => Number(i.key.split('-')[1]))) + 1),
             summary: edit.value,
+            created: new Date().toISOString(),
+            creator: 'Maz',
             updated: new Date().toISOString(),
           });
         else {
@@ -199,6 +256,17 @@ export async function teamAction(store, p) {
           } else row[{ duedate: 'due' }[edit.field] || edit.field] = edit.value;
           if (edit.field === 'status') row.done = edit.value === 'Done';
           row.updated = new Date().toISOString();
+          row.events = [
+            ...(row.events || []),
+            {
+              id: randomUUID(),
+              kind: edit.field === 'comment' ? 'comment' : 'change',
+              actor: 'Maz',
+              at: row.updated,
+              title: edit.field === 'comment' ? 'Commented' : 'Changed ' + edit.field,
+              body: edit.field === 'comment' ? edit.value : plan.after,
+            },
+          ];
         }
         store.set('team.demo', rows);
         return { saved: true };
