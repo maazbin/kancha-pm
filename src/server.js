@@ -24,6 +24,7 @@ const assets = {
   '/connections.js': 'connections.js',
   '/team-view.js': 'team-view.js',
   '/workspace.js': 'workspace.js',
+  '/delivery.js': 'delivery.js',
   '/plugin-cards.js': 'plugin-cards.js',
   '/work-views.js': 'work-views.js',
   '/style.css': 'style.css',
@@ -208,8 +209,10 @@ export async function startServer(store, { port = 4317, background = true, nativ
             );
             delete result.state;
           }
-        } else if (url.pathname === '/api/team') result = await teamAction(activeStore, payload);
-        else if (url.pathname === '/api/chat') result = submitChat(activeStore, payload);
+        } else if (url.pathname === '/api/team') {
+          result = await teamAction(activeStore, payload);
+          if (payload.action === 'commit' && result.saved && !activeStore.demo) void discover();
+        } else if (url.pathname === '/api/chat') result = submitChat(activeStore, payload);
         else if (url.pathname === '/api/chat/cancel')
           result = {
             cancelled: !!activeStore.db

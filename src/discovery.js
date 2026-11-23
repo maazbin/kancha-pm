@@ -11,6 +11,7 @@ const readFields = [
   'priority',
   'updated',
   'created',
+  'resolutiondate',
   'duedate',
 ];
 const readOp = (read, name, cloudId, inputs) =>
@@ -48,11 +49,13 @@ function ticket(raw, site, me) {
     site: site.id,
     title: f.summary || raw.key,
     owner: f.assignee?.displayName || '',
+    account: f.assignee?.accountId || '',
     mine: !!me && me === f.assignee?.accountId,
     status: f.status?.name || 'Unknown',
     category: f.status?.statusCategory?.key || 'unknown',
     updated: f.updated,
     created: f.created,
+    resolved: f.resolutiondate || null,
     due: f.duedate || null,
     priority: f.priority?.name || '',
   };

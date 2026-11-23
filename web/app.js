@@ -3,6 +3,7 @@ import { setupDialog, download, probePrompt } from './connections.js';
 import { pluginScreen, pluginDialog } from './plugin-cards.js';
 import { teamView } from './team-view.js';
 import { workspaceView } from './workspace.js';
+import { deliveryView } from './delivery.js';
 import { workViews, chatController, chatView } from './work-views.js';
 const $ = (q) => document.querySelector(q);
 const main = $('#main'),
@@ -338,7 +339,20 @@ function settings() {
   );
 }
 let priorityScope = '';
-const workspaceState = { board: '', limit: 15, repoQuery: '' };
+const workspaceState = {
+  board: '',
+  limit: 15,
+  repoQuery: '',
+  detailLimit: 20,
+  days: 30,
+  drill: 'overdue',
+  owner: '',
+  lane: 'all',
+  teamQuery: '',
+  projectTools: false,
+};
+const deliveryScreen = (mode) =>
+  deliveryView({ board, state: workspaceState, esc, action, header, panel, mode });
 const workspaceSection = (mode) =>
   workspaceView({ board, esc, action, panel, header, state: workspaceState, mode });
 const chat = chatController({ api, esc, action, date });
@@ -361,6 +375,16 @@ document.addEventListener('change', (e) => {
   if (e.target.id === 'workspace-scope') {
     workspaceState.board = e.target.value;
     workspaceState.limit = 15;
+    workspaceState.detailLimit = 20;
+    render();
+    return;
+  }
+  if (e.target.id === 'delivery-days' || e.target.id === 'delivery-owner') {
+    if (e.target.id === 'delivery-days') {
+      workspaceState.days = Number(e.target.value);
+      workspaceState.drill = 'resolved';
+    } else workspaceState.owner = e.target.value;
+    workspaceState.detailLimit = 20;
     render();
     return;
   }
@@ -370,6 +394,16 @@ document.addEventListener('change', (e) => {
   }
 });
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'delivery-search') {
+    workspaceState.teamQuery = e.target.value;
+    workspaceState.detailLimit = 20;
+    const position = e.target.selectionStart;
+    render();
+    const field = $('#delivery-search');
+    field.focus();
+    field.setSelectionRange(position, position);
+    return;
+  }
   if (e.target.id !== 'ws-repo-search') return;
   workspaceState.repoQuery = e.target.value.toLowerCase();
   for (const b of document.querySelectorAll('.repo-chip'))
@@ -417,15 +451,26 @@ function render() {
   if (page === 'analytics' && board.workspace.sites.length) {
     main.querySelector('.head')?.remove();
     main.innerHTML =
-      header('Analytics', 'Current workload across connected boards.') +
-      workspaceSection('analytics') +
+      header('Analytics', '') +
+      deliveryScreen('analytics') +
       '<details class="panel source-drawer"><summary>Personal activity</summary>' +
       main.innerHTML +
       '</details>';
   }
   document.title = navs[page][0] + ' · Kancha';
   if (page === 'chat') chat.bind();
-  if (page === 'team') team.bind();
+  if (page === 'team') {
+    if (board.workspace.sites.length && !workspaceState.projectTools)
+      main.innerHTML = deliveryScreen('team');
+    else {
+      if (board.workspace.sites.length)
+        main.insertAdjacentHTML(
+          'afterbegin',
+          action('delivery-team', 'Team overview', 'subtle', 'arrow-left'),
+        );
+      team.bind();
+    }
+  }
 }
 function navigate(p) {
   revision++;
@@ -616,6 +661,17 @@ async function show(id) {
   openBrief(b.item, b.checkout);
 }
 async function handle(a, v) {
+  if (a.startsWith('delivery-')) {
+    if (a === 'delivery-lane') workspaceState.lane = v;
+    if (a === 'delivery-drill') workspaceState.drill = v;
+    if (a === 'delivery-tools' || a === 'delivery-team')
+      workspaceState.projectTools = a === 'delivery-tools';
+    workspaceState.detailLimit = a === 'delivery-more' ? workspaceState.detailLimit + 30 : 20;
+    render();
+    if (a === 'delivery-drill')
+      main.querySelector('#delivery-detail')?.scrollIntoView({ block: 'start' });
+    return;
+  }
   if (a === 'pm-accept' || a === 'pm-later') {
     await api('advisor', { action: a === 'pm-accept' ? 'accept' : 'later', revision: v });
     await refresh();
@@ -1066,7 +1122,12 @@ async function tick() {
   if (
     document.hidden ||
     dialog.open ||
-    ['settings', 'chat', 'team'].includes(page) ||
+    ['settings', 'chat'].includes(page) ||
+    (page === 'team' &&
+      (workspaceState.projectTools ||
+        !board?.workspace.sites.length ||
+        (main.contains(document.activeElement) &&
+          ['INPUT', 'SELECT'].includes(document.activeElement.tagName)))) ||
     document.activeElement?.id === 'ws-repo-search' ||
     document.querySelector('#repo-drawer[open]') ||
     saving

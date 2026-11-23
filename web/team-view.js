@@ -478,6 +478,13 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link,
       void run('sites');
     },
     handle: async (a, v) => {
+      if (a === 'team-scope-edit') {
+        const [s, p, key] = JSON.parse(v);
+        site = s;
+        project = p;
+        sites = desk().workspace.sites;
+        return edit(key);
+      }
       if (a === 'team-follow' || a === 'team-check') {
         await read(
           a === 'team-follow' ? 'follow' : 'check',
@@ -585,6 +592,10 @@ export function teamView({ api, esc, action, header, panel, modal, notice, link,
         await read('commit', { review: v });
         document.querySelector('#dialog').close();
         notice(site === 'sample' ? 'Sample ticket saved.' : 'Jira confirmed your change.');
+        if (!box()) {
+          await refresh();
+          return;
+        }
         return run('tickets');
       }
       return run(a === 'team-reload' ? 'sites' : 'tickets', a === 'team-more');
