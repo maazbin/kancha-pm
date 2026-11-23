@@ -28,13 +28,20 @@ export async function deliver(store) {
     try {
       if (store.config(key, false)) continue;
       const title = 'Kancha · ' + m.label;
-      if (process.platform === 'win32')
-        await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script], {
-          windowsHide: true,
-          timeout: 13000,
-          env: { ...process.env, KANCHA_NOTICE_TITLE: title, KANCHA_NOTICE_BODY: m.title },
-        });
-      else if (process.platform === 'darwin')
+      if (process.platform === 'win32') {
+        const args = ['-NoProfile', '-NonInteractive', '-File', script],
+          options = {
+            windowsHide: true,
+            timeout: 13000,
+            env: { ...process.env, KANCHA_NOTICE_TITLE: title, KANCHA_NOTICE_BODY: m.title },
+          };
+        try {
+          await run('pwsh.exe', args, options);
+        } catch (e) {
+          if (e.code !== 'ENOENT') throw e;
+          await run('powershell.exe', args, options);
+        }
+      } else if (process.platform === 'darwin')
         await run(
           'osascript',
           [
