@@ -103,6 +103,8 @@ Use **Get agent prompt** to test a Jira or Slack connection already available in
 
 ### Connected workspace
 
+Use **Analytics** to compare 7, 30 or 90 days of ticket intake, resolutions, turnaround and aging. Select a count, date bucket or board handoff to see the source tickets. **Team tickets** opens across boards with queues for mentions, blocked work, reviews, missed due dates and ownership gaps. The coding agent can call `get_delivery_health` for the same figures and example tickets. The PM’s day-start context and browser chat include the 30-day view.
+
 The coding agent prepares one next move with source evidence. In a coding session the Kancha skill checks for prior work when a developer starts a task, and delivers its recommendation in the conversation. The same recommendation appears first on the personal desk. **Use this next step** focuses a private action. **In an hour** snoozes the suggestion. Under **Workspace → PM reasoning** choose an existing signed-in Claude Code or Codex CLI for automatic background recommendations, or use the open coding session. CLI installation selects that engine during setup. The background worker rechecks when relevant evidence changes. A host-only session needs an active turn or a scheduled host wake-up.
 
 A connected Jira account populates **Projects**, **Focus desk** and **Analytics** automatically. Kancha reads the accessible board list and pages each board’s issues. The workload chart counts each site-qualified ticket once. Choose a board or click a ticket row to inspect its timeline. Personal assignments also enter the priority queue. Project mention checks start automatically and can be muted separately.

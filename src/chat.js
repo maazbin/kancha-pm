@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { adviceContext, advisorState } from './advisor.js';
+import { deliveryHealth } from './delivery-health.js';
 
 const turn = z
   .object({
@@ -52,6 +53,7 @@ function context(store, row) {
   const packet = adviceContext(store, row.question);
   return {
     relatedWork: packet.sources,
+    delivery: deliveryHealth(store),
     recommendation: advisorState(store).brief,
     time: b.time,
     available: b.agenda.length,

@@ -25,6 +25,7 @@ const assets = {
   '/team-view.js': 'team-view.js',
   '/workspace.js': 'workspace.js',
   '/delivery.js': 'delivery.js',
+  '/delivery-data.js': 'delivery-data.js',
   '/plugin-cards.js': 'plugin-cards.js',
   '/work-views.js': 'work-views.js',
   '/style.css': 'style.css',

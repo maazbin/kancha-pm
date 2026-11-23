@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { handoffDesk } from './handoffs.js';
 import { workspaceSnapshot } from './workspace-state.js';
+import { deliveryHealth } from './delivery-health.js';
 import { teamAction } from './team.js';
 import { askCli } from './chat.js';
 
@@ -246,7 +247,7 @@ export async function getAdvicePacket(store, topic = '', keys = []) {
       },
     ].slice(-12),
   );
-  return { ...p, updates };
+  return { ...p, updates, delivery: deliveryHealth(store) };
 }
 export function actOnAdvice(store, revision, action) {
   const brief = advisorState(store).brief;

@@ -11,6 +11,7 @@ import { pluginRead } from './plugins.js';
 import { teamAction } from './team.js';
 import { handoffDesk } from './handoffs.js';
 import { workspaceSnapshot } from './workspace-state.js';
+import { deliveryHealth } from './delivery-health.js';
 import { getAdvicePacket, advisorState, saveAdvice, adviceFields } from './advisor.js';
 import { waitingChat, replyChat } from './chat.js';
 import {
@@ -59,6 +60,15 @@ async function checkoutContext(dir) {
 }
 export function commands(store) {
   const map = [
+    arg(
+      'get_delivery_health',
+      'Read the same delivery metrics as Analytics, including intake, resolutions, turnaround, overdue work and a few tickets worth checking. Optionally scope to a site-qualified Jira board ID.',
+      {
+        boardId: z.string().max(2000).optional(),
+        days: z.union([z.literal(7), z.literal(30), z.literal(90)]).optional(),
+      },
+      (a) => deliveryHealth(store, a),
+    ),
     arg(
       'get_pm_context',
       'Start a work session or preflight a topic. Return personally relevant signals, related work and source timelines for this coding agent to reason about.',
